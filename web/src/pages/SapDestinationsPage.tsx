@@ -3,6 +3,14 @@ import type { FormEvent } from 'react';
 import * as adminApi from '../api/admin';
 import type { SapDestination } from '../types';
 
+interface TestState {
+  status: 'testing' | 'done';
+  success?: boolean;
+  statusCode?: number | null;
+  durationMs?: number;
+  message?: string;
+}
+
 export default function SapDestinationsPage() {
   const [destinations, setDestinations] = useState<SapDestination[]>([]);
   const [loading, setLoading] = useState(true);
@@ -15,6 +23,9 @@ export default function SapDestinationsPage() {
   const [url, setUrl] = useState('');
   const [sapUser, setSapUser] = useState('');
   const [sapPassword, setSapPassword] = useState('');
+
+  const [testPaths, setTestPaths] = useState<Record<string, string>>({});
+  const [testResults, setTestResults] = useState<Record<string, TestState>>({});
 
   async function load() {
     setLoading(true);
@@ -62,6 +73,26 @@ export default function SapDestinationsPage() {
       await load();
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Failed to update destination');
+    }
+  }
+
+  async function onTestConnection(destination: SapDestination) {
+    setTestResults((prev) => ({ ...prev, [destination.id]: { status: 'testing' } }));
+    try {
+      const result = await adminApi.testSapDestinationConnection(
+        destination.id,
+        testPaths[destination.id] || undefined,
+      );
+      setTestResults((prev) => ({ ...prev, [destination.id]: { status: 'done', ...result } }));
+    } catch (err: any) {
+      setTestResults((prev) => ({
+        ...prev,
+        [destination.id]: {
+          status: 'done',
+          success: false,
+          message: err.response?.data?.message ?? 'Test request failed',
+        },
+      }));
     }
   }
 
@@ -168,30 +199,59 @@ export default function SapDestinationsPage() {
               </tr>
             </thead>
             <tbody>
-              {destinations.map((d) => (
-                <tr key={d.id}>
-                  <td>
-                    {d.name}
-                    {d.description && <div className="text-muted">{d.description}</div>}
-                  </td>
-                  <td className="mono">{d.url}</td>
-                  <td>
-                    <span className={`badge ${d.isActive ? 'badge-success' : 'badge-muted'}`}>
-                      {d.isActive ? 'Active' : 'Disabled'}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="row-actions">
-                      <button className="btn btn-sm" onClick={() => onToggleActive(d)}>
-                        {d.isActive ? 'Disable' : 'Enable'}
-                      </button>
-                      <button className="btn btn-sm btn-danger" onClick={() => onDelete(d)}>
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {destinations.map((d) => {
+                const test = testResults[d.id];
+                return (
+                  <tr key={d.id}>
+                    <td>
+                      {d.name}
+                      {d.description && <div className="text-muted">{d.description}</div>}
+                    </td>
+                    <td className="mono">{d.url}</td>
+                    <td>
+                      <span className={`badge ${d.isActive ? 'badge-success' : 'badge-muted'}`}>
+                        {d.isActive ? 'Active' : 'Disabled'}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="row-actions" style={{ marginBottom: 6 }}>
+                        <input
+                          className="mono"
+                          style={{ width: 160 }}
+                          placeholder="optional fmcall path"
+                          value={testPaths[d.id] ?? ''}
+                          onChange={(e) =>
+                            setTestPaths((prev) => ({ ...prev, [d.id]: e.target.value }))
+                          }
+                        />
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => onTestConnection(d)}
+                          disabled={test?.status === 'testing'}
+                        >
+                          {test?.status === 'testing' ? 'Testing…' : 'Test connection'}
+                        </button>
+                        <button className="btn btn-sm" onClick={() => onToggleActive(d)}>
+                          {d.isActive ? 'Disable' : 'Enable'}
+                        </button>
+                        <button className="btn btn-sm btn-danger" onClick={() => onDelete(d)}>
+                          Delete
+                        </button>
+                      </div>
+                      {test?.status === 'done' && (
+                        <div className="text-muted">
+                          <span className={`badge ${test.success ? 'badge-success' : 'badge-muted'}`}>
+                            {test.success ? 'Success' : 'Failed'}
+                          </span>{' '}
+                          {test.message}
+                          {test.statusCode != null && ` (HTTP ${test.statusCode})`}
+                          {test.durationMs != null && ` · ${test.durationMs}ms`}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

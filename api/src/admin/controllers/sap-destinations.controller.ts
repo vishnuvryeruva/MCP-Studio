@@ -17,6 +17,7 @@ import type { AuthenticatedUser } from '../../common/interfaces/jwt-payload.inte
 import { SapDestinationsService } from '../services/sap-destinations.service';
 import { CreateSapDestinationDto } from '../dto/create-sap-destination.dto';
 import { UpdateSapDestinationDto } from '../dto/update-sap-destination.dto';
+import { TestSapConnectionDto } from '../dto/test-sap-connection.dto';
 
 @Controller('admin/sap-destinations')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -51,5 +52,14 @@ export class SapDestinationsController {
   @Delete(':id')
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.sapDestinationsService.remove(user.organizationId, id);
+  }
+
+  @Post(':id/test-connection')
+  testConnection(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: TestSapConnectionDto,
+  ) {
+    return this.sapDestinationsService.testConnection(user.organizationId, id, dto.path);
   }
 }

@@ -60,6 +60,13 @@ export const updateSapDestination = (
 ) => apiClient.patch<SapDestination>(`/admin/sap-destinations/${id}`, payload).then((r) => r.data);
 export const deleteSapDestination = (id: string) =>
   apiClient.delete(`/admin/sap-destinations/${id}`);
+export const testSapDestinationConnection = (id: string, path?: string) =>
+  apiClient
+    .post<{ success: boolean; statusCode: number | null; durationMs: number; message: string }>(
+      `/admin/sap-destinations/${id}/test-connection`,
+      { path },
+    )
+    .then((r) => r.data);
 
 // Function Modules (whitelisted fmcall URLs / MCP tools)
 export const listFunctionModules = () =>
