@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
-import { HttpModule } from '@nestjs/axios';
 import { User } from '../models/user.model';
 import { Role } from '../models/role.model';
 import { SapDestination } from '../models/sap-destination.model';
@@ -19,7 +18,6 @@ import { FunctionModulesService } from './services/function-modules.service';
   imports: [
     SequelizeModule.forFeature([User, Role, SapDestination, FunctionModuleModel]),
     AuthModule,
-    HttpModule,
   ],
   controllers: [
     RolesController,

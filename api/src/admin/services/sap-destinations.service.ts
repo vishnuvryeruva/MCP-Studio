@@ -1,7 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
-import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
+import { ConfigService } from '@nestjs/config';
+import { executeHttpRequest } from '@sap-cloud-sdk/http-client';
+import type { HttpResponse } from '@sap-cloud-sdk/http-client';
+import type { HttpDestination } from '@sap-cloud-sdk/connectivity';
+import { timeout } from '@sap-cloud-sdk/resilience';
 import { isAxiosError } from 'axios';
 import { SapDestination } from '../../models/sap-destination.model';
 import { EncryptionService } from '../../common/services/encryption.service';
@@ -15,13 +18,15 @@ export interface TestConnectionResult {
   message: string;
 }
 
+const REQUEST_TIMEOUT_MS = 10_000;
+
 @Injectable()
 export class SapDestinationsService {
   constructor(
     @InjectModel(SapDestination)
     private readonly sapDestinationModel: typeof SapDestination,
     private readonly encryptionService: EncryptionService,
-    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
   ) {}
 
   async findAll(organizationId: string) {
@@ -51,6 +56,7 @@ export class SapDestinationsService {
       name: dto.name,
       description: dto.description ?? null,
       url: dto.url,
+      cloudConnectorLocationId: dto.cloudConnectorLocationId ?? null,
       encryptedSapUser: this.encryptionService.encrypt(dto.sapUser),
       encryptedSapPassword: this.encryptionService.encrypt(dto.sapPassword),
       createdByUserId: userId,
@@ -85,6 +91,45 @@ export class SapDestinationsService {
     };
   }
 
+  // Builds the SAP Cloud SDK destination for a stored SapDestination. When a Cloud
+  // Connector Location ID is resolved (per-destination or the app-wide default), the
+  // destination is marked OnPremise so the SDK tunnels through the bound Connectivity
+  // service + Cloud Connector to reach the on-prem ABAP system. Otherwise it's a
+  // direct Internet call (e.g. local dev against an internet-reachable system).
+  private buildDestination(destination: SapDestination): HttpDestination {
+    const { sapUser, sapPassword } = this.decryptCredentials(destination);
+    const locationId =
+      destination.cloudConnectorLocationId ||
+      this.configService.get<string>('sap.defaultCloudConnectorLocationId') ||
+      undefined;
+
+    return {
+      url: destination.url,
+      username: sapUser,
+      password: sapPassword,
+      authentication: 'BasicAuthentication',
+      proxyType: locationId ? 'OnPremise' : 'Internet',
+      ...(locationId ? { cloudConnectorLocationId: locationId } : {}),
+    };
+  }
+
+  // Reusable outbound SAP call. `path` is appended to the destination's base URL
+  // (e.g. an fmcall path). Throws on non-2xx (Axios default) so callers can inspect
+  // the error's response status. Used by testConnection and, later, the fmcall invoker.
+  async callSap(
+    destination: SapDestination,
+    path?: string,
+    method: 'get' | 'post' = 'get',
+    data?: unknown,
+  ): Promise<HttpResponse> {
+    return executeHttpRequest(this.buildDestination(destination), {
+      method,
+      url: path ?? '',
+      ...(data !== undefined ? { data } : {}),
+      middleware: [timeout(REQUEST_TIMEOUT_MS)],
+    });
+  }
+
   // Makes a real outbound call to the SAP destination (optionally a specific fmcall
   // path) using the stored SAP_USER/SAP_PWD, to verify the destination is reachable
   // and the credentials are accepted. Never exposes the decrypted credentials.
@@ -94,41 +139,58 @@ export class SapDestinationsService {
     path?: string,
   ): Promise<TestConnectionResult> {
     const destination = await this.findOneOrThrow(organizationId, id);
-    const { sapUser, sapPassword } = this.decryptCredentials(destination);
-    const targetUrl = path ? new URL(path, destination.url).toString() : destination.url;
 
     const start = Date.now();
     try {
-      const response = await firstValueFrom(
-        this.httpService.get(targetUrl, {
-          auth: { username: sapUser, password: sapPassword },
-          timeout: 10_000,
-          validateStatus: () => true,
-        }),
-      );
-      const durationMs = Date.now() - start;
-      const success = response.status >= 200 && response.status < 300;
-      const unauthorized = response.status === 401 || response.status === 403;
+      const response = await this.callSap(destination, path);
       return {
-        success,
+        success: true,
         statusCode: response.status,
-        durationMs,
-        message: success
-          ? 'Connected successfully and credentials were accepted'
-          : unauthorized
-            ? 'Reached the SAP system, but SAP_USER/SAP_PWD were rejected'
-            : `SAP system responded with HTTP ${response.status}`,
+        durationMs: Date.now() - start,
+        message: 'Connected successfully and credentials were accepted',
       };
     } catch (err) {
       const durationMs = Date.now() - start;
-      const detail = isAxiosError(err) ? err.code ?? err.message : 'Unknown error';
+      const status = this.statusFromError(err);
+      if (status !== null) {
+        const unauthorized = status === 401 || status === 403;
+        return {
+          success: false,
+          statusCode: status,
+          durationMs,
+          message: unauthorized
+            ? 'Reached the SAP system, but SAP_USER/SAP_PWD were rejected'
+            : `SAP system responded with HTTP ${status}`,
+        };
+      }
       return {
         success: false,
         statusCode: null,
         durationMs,
-        message: `Could not reach SAP system (${detail})`,
+        message: `Could not reach SAP system (${this.detailFromError(err)})`,
       };
     }
+  }
+
+  // Extracts an HTTP status from an error thrown by executeHttpRequest. HTTP error
+  // responses surface as Axios errors; connectivity/proxy failures may be wrapped in
+  // an ErrorWithCause, so we also unwrap `cause`.
+  private statusFromError(err: unknown): number | null {
+    if (isAxiosError(err) && err.response) {
+      return err.response.status;
+    }
+    const cause = (err as { cause?: unknown } | null)?.cause;
+    if (isAxiosError(cause) && cause.response) {
+      return cause.response.status;
+    }
+    return null;
+  }
+
+  private detailFromError(err: unknown): string {
+    if (isAxiosError(err)) {
+      return err.code ?? err.message;
+    }
+    return err instanceof Error ? err.message : 'Unknown error';
   }
 
   private toSafeResponse(destination: SapDestination) {
@@ -138,6 +200,7 @@ export class SapDestinationsService {
       name: destination.name,
       description: destination.description,
       url: destination.url,
+      cloudConnectorLocationId: destination.cloudConnectorLocationId,
       isActive: destination.isActive,
       createdByUserId: destination.createdByUserId,
       createdAt: destination.get('createdAt'),

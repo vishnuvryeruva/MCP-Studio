@@ -6,6 +6,7 @@ import { User } from '../models/user.model';
 import { Role } from '../models/role.model';
 import { SapDestination } from '../models/sap-destination.model';
 import { FunctionModule } from '../models/function-module.model';
+import { resolveDatabaseConnection } from './database.config';
 
 @Module({
   imports: [
@@ -14,11 +15,9 @@ import { FunctionModule } from '../models/function-module.model';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         dialect: 'postgres',
-        host: config.get<string>('database.host'),
-        port: config.get<number>('database.port'),
-        username: config.get<string>('database.username'),
-        password: config.get<string>('database.password'),
-        database: config.get<string>('database.database'),
+        // On Cloud Foundry this comes from the bound postgresql-db service (with SSL);
+        // locally it falls back to the DB_* env vars.
+        ...resolveDatabaseConnection(config),
         models: [Organization, User, Role, SapDestination, FunctionModule],
         autoLoadModels: true,
         synchronize: true,

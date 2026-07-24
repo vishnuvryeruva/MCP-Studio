@@ -13,4 +13,11 @@ export default () => ({
     expiresIn: process.env.JWT_EXPIRES_IN ?? '8h',
   },
   credentialsEncryptionKey: process.env.CREDENTIALS_ENCRYPTION_KEY ?? '',
+  sap: {
+    // Default SAP Cloud Connector Location ID (from the BTP subaccount's Cloud
+    // Connector). Used when a SapDestination doesn't specify its own. When set,
+    // outbound calls route through the Connectivity service to the on-prem system.
+    defaultCloudConnectorLocationId:
+      process.env.SAP_CLOUD_CONNECTOR_LOCATION_ID ?? '',
+  },
 });

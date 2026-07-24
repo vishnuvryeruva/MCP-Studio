@@ -31,16 +31,24 @@ export class SapDestination extends Model {
   @BelongsTo(() => Organization)
   declare organization: Organization;
 
-  // Name of the BTP destination, e.g. as configured in the SAP BTP cockpit
+  // Human-friendly name for this destination within MCP Studio (unique per org).
   @Column({ type: DataType.STRING, allowNull: false })
   declare name: string;
 
   @Column({ type: DataType.STRING, allowNull: true })
   declare description: string | null;
 
-  // Base URL of the SAP system / BTP destination
+  // Base URL of the SAP system. For on-prem access via SAP Cloud Connector this is
+  // the *virtual host* mapped in the connector (e.g. http://192.168.171.41:8000),
+  // not a public URL.
   @Column({ type: DataType.STRING, allowNull: false })
   declare url: string;
+
+  // Optional SAP Cloud Connector Location ID. When set (or when the app-wide default
+  // is configured), outbound calls route through the BTP Connectivity service with
+  // proxyType "OnPremise" to reach the on-prem ABAP system. Null = direct/Internet call.
+  @Column({ type: DataType.STRING, allowNull: true })
+  declare cloudConnectorLocationId: string | null;
 
   // AES-256-GCM encrypted "iv:authTag:ciphertext" hex string. Never store SAP_USER/SAP_PWD in plaintext.
   @Column({ type: DataType.TEXT, allowNull: false })

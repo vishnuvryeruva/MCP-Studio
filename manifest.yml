@@ -1,0 +1,35 @@
+# Cloud Foundry manifest for MCP Studio (deployed to the Mygo_BAS subaccount so it
+# can reuse the existing Cloud Connector — Location ID MYGO-BTP-BAS).
+#
+# Image tags are rewritten by deploy.sh on each run. Secrets/config are NOT stored
+# here — set them with `cf set-env` (see DEPLOY.md). Route hosts must be globally
+# unique on the shared domain; change them if `cf push` reports a route conflict.
+applications:
+  - name: mcp-studio-api
+    docker:
+      image: vishnuvryeruva98/mcp-studio-api:v202607231748
+    memory: 512M
+    disk_quota: 1G
+    instances: 1
+    health-check-type: port
+    routes:
+      - route: mcp-studio-api.cfapps.us10-001.hana.ondemand.com
+    # connectivity = on-prem tunnel via Cloud Connector; xsuaa = token handling for
+    # the SAP Cloud SDK; postgresql-db = the database (credentials read from VCAP).
+    # Create these first (see DEPLOY.md) or `cf push` will fail.
+    services:
+      - mcp-studio-connectivity
+      - mcp-studio-xsuaa
+      - mcp-studio-postgres
+    env:
+      NODE_ENV: production
+
+  - name: mcp-studio-web
+    docker:
+      image: vishnuvryeruva98/mcp-studio-web:v202607231748
+    memory: 256M
+    disk_quota: 512M
+    instances: 1
+    health-check-type: port
+    routes:
+      - route: mcp-studio-web.cfapps.us10-001.hana.ondemand.com

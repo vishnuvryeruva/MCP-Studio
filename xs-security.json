@@ -1,0 +1,8 @@
+{
+  "xsappname": "mcp-studio",
+  "tenant-mode": "dedicated",
+  "description": "Security descriptor for MCP Studio (xsuaa instance used by the SAP Cloud SDK for on-prem connectivity).",
+  "scopes": [],
+  "attributes": [],
+  "role-templates": []
+}
