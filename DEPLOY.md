@@ -32,7 +32,8 @@ the Yoda web-app:
 
 ### 1a. Bound services (required before the first `cf push`)
 
-All three are bound by `manifest.yml`. Create them once:
+The manifest binds `mcp-studio-connectivity`, `mcp-studio-xsuaa`, and the existing
+`PostgreSQL-instance`. Create the first two once (the database is reused, not created):
 
 ```bash
 # On-prem tunnel via Cloud Connector
@@ -40,23 +41,17 @@ cf create-service connectivity lite mcp-studio-connectivity
 
 # xsuaa — used by the SAP Cloud SDK for token handling
 cf create-service xsuaa application mcp-studio-xsuaa -c xs-security.json
-
-# PostgreSQL (the 'free' plan quota may be taken; this project uses 'standard')
-cf create-service postgresql-db standard mcp-studio-postgres
 ```
 
-Postgres provisions asynchronously — wait for `create succeeded` before pushing:
+### 1b. Database — reused instance, isolated schema, no DB_* vars on CF
 
-```bash
-cf service mcp-studio-postgres    # repeat until status: create succeeded
-```
-
-### 1b. Database — no DB_* vars needed on CF
-
-The API reads the bound `postgresql-db` instance straight from `VCAP_SERVICES`
-(including TLS) via `src/database/database.config.ts`, and `synchronize: true` creates
-the tables on first boot. Nothing to configure. (Locally, with no `VCAP_SERVICES`, it
-falls back to the `DB_*` env vars from `.env`.)
+New `postgresql-db` instances are entitlement-blocked in this subaccount, so MCP Studio
+**reuses the existing `PostgreSQL-instance`** (shared with Yoda). To stay isolated, all
+of MCP Studio's tables live in a dedicated Postgres schema set by `DB_SCHEMA=mcp_studio`
+(in `manifest.yml`); the app creates that schema on boot and `synchronize` builds the
+tables there, never touching Yoda's. Credentials + TLS come from `VCAP_SERVICES` via
+`src/database/database.config.ts` — nothing else to configure. (Locally, with no
+`VCAP_SERVICES`, it falls back to the `DB_*` env vars from `.env`.)
 
 ### 1c. Environment variables (secrets — not in the manifest)
 

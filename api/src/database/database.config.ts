@@ -52,6 +52,22 @@ export function resolveDatabaseConnection(
   };
 }
 
+// Optional dedicated Postgres schema for MCP Studio's tables. Set DB_SCHEMA when the
+// database is shared with another app (e.g. reusing an existing instance) so our
+// `synchronize` never collides with the other app's tables. Empty = default (public).
+export function getDatabaseSchema(): string | undefined {
+  const raw = process.env.DB_SCHEMA?.trim();
+  if (!raw) {
+    return undefined;
+  }
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(raw)) {
+    throw new Error(
+      `Invalid DB_SCHEMA "${raw}" — must be a valid Postgres identifier (letters, digits, underscore).`,
+    );
+  }
+  return raw;
+}
+
 function readBoundPostgres(): PostgresBindingCredentials | null {
   const vcap = process.env.VCAP_SERVICES;
   if (!vcap) {

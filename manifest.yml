@@ -7,7 +7,7 @@
 applications:
   - name: mcp-studio-api
     docker:
-      image: vishnuvryeruva98/mcp-studio-api:v202607231748
+      image: vishnuvryeruva98/mcp-studio-api:v202607241614
     memory: 512M
     disk_quota: 1G
     instances: 1
@@ -15,18 +15,21 @@ applications:
     routes:
       - route: mcp-studio-api.cfapps.us10-001.hana.ondemand.com
     # connectivity = on-prem tunnel via Cloud Connector; xsuaa = token handling for
-    # the SAP Cloud SDK; postgresql-db = the database (credentials read from VCAP).
-    # Create these first (see DEPLOY.md) or `cf push` will fail.
+    # the SAP Cloud SDK; PostgreSQL-instance = the DB (shared with Yoda; MCP Studio's
+    # tables live in the DB_SCHEMA below so they never collide). Credentials come from
+    # VCAP. Create the first two (see DEPLOY.md) or `cf push` will fail.
     services:
       - mcp-studio-connectivity
       - mcp-studio-xsuaa
-      - mcp-studio-postgres
+      - PostgreSQL-instance
     env:
       NODE_ENV: production
+      # Dedicated schema on the shared Postgres instance (isolates us from Yoda's tables).
+      DB_SCHEMA: mcp_studio
 
   - name: mcp-studio-web
     docker:
-      image: vishnuvryeruva98/mcp-studio-web:v202607231748
+      image: vishnuvryeruva98/mcp-studio-web:v202607241614
     memory: 256M
     disk_quota: 512M
     instances: 1
