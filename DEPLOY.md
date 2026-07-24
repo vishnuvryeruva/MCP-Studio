@@ -61,7 +61,10 @@ crashes on boot.** Set them after the app object exists (see the first-deploy fl
 ```bash
 cf set-env mcp-studio-api CREDENTIALS_ENCRYPTION_KEY "$(openssl rand -hex 32)"
 cf set-env mcp-studio-api JWT_SECRET "$(openssl rand -hex 32)"
-cf set-env mcp-studio-api CORS_ORIGIN "https://mcp-studio-web.cfapps.us10-001.hana.ondemand.com"
+# CORS_ORIGIN must EXACTLY match the URL you open in the browser (scheme, host, no
+# trailing slash). It accepts a comma-separated list to allow more than one route
+# (e.g. the canonical + trial CF routes):
+cf set-env mcp-studio-api CORS_ORIGIN "https://mcp-studio-web.cfapps.us10-001.hana.ondemand.com,https://mcp-studio-web-97415b8ftrial.cfapps.us10-001.hana.ondemand.com"
 cf set-env mcp-studio-api SAP_CLOUD_CONNECTOR_LOCATION_ID "MYGO-BTP-BAS"
 ```
 

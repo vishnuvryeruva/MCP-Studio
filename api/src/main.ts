@@ -15,8 +15,15 @@ async function bootstrap() {
     }),
   );
 
+  // CORS_ORIGIN may list multiple allowed origins (comma-separated), e.g. the
+  // canonical and trial Cloud Foundry routes.
+  const corsOrigin = config.get<string>('corsOrigin') ?? '';
+  const allowedOrigins = corsOrigin
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: config.get<string>('corsOrigin'),
+    origin: allowedOrigins.length > 1 ? allowedOrigins : (allowedOrigins[0] ?? corsOrigin),
     credentials: true,
   });
 
