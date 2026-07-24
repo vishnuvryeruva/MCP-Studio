@@ -10,9 +10,14 @@ ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build
 
-# ---- runner: serve the SPA with nginx on 8080 ----
-FROM nginx:alpine AS runner
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+# ---- runner: serve the SPA with a tiny Node process on 8080 ----
+# Node needs no root and writes no PID file, so it runs cleanly as the non-root user
+# Cloud Foundry assigns (nginx could not — CF blocks its PID file write). Mirrors how
+# Yoda's Node frontend runs on the same platform.
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV PORT=8080
+COPY --from=build /app/dist ./dist
+COPY server.js ./server.js
 EXPOSE 8080
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["node", "server.js"]
