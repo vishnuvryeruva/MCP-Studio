@@ -1,18 +1,19 @@
 :root {
-  --bg: #0f1115;
-  --surface: #171a21;
-  --surface-2: #1f232c;
-  --border: #2a2f3a;
-  --text: #e6e8eb;
-  --text-muted: #9aa1ac;
-  --accent: #5b8def;
-  --accent-hover: #4a7cdc;
-  --danger: #e35d5d;
-  --danger-hover: #c94b4b;
-  --success: #4caf7d;
+  --bg: #f7f4f0;
+  --surface: #ffffff;
+  --surface-2: #f3efe9;
+  --border: #e6ddd3;
+  --text: #1f1a15;
+  --text-muted: #7a6f64;
+  --accent: #e86b1f;
+  --accent-hover: #d45a12;
+  --accent-soft: #fff0e6;
+  --danger: #d64545;
+  --danger-hover: #b93838;
+  --success: #2f9e6b;
   --radius: 8px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 * {
@@ -148,9 +149,9 @@ button {
 }
 
 .error-banner {
-  background: rgba(227, 93, 93, 0.12);
+  background: rgba(214, 69, 69, 0.08);
   border: 1px solid var(--danger);
-  color: #f2a5a5;
+  color: var(--danger);
   padding: 10px 12px;
   border-radius: 6px;
   font-size: 13px;
@@ -207,8 +208,8 @@ button {
 }
 
 .sidebar-nav a.active {
-  background: var(--surface-2);
-  color: var(--text);
+  background: var(--accent-soft);
+  color: var(--accent);
   font-weight: 600;
 }
 
