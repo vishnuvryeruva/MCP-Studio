@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { ConfigService } from '@nestjs/config';
 import { executeHttpRequest } from '@sap-cloud-sdk/http-client';
 import type { HttpResponse } from '@sap-cloud-sdk/http-client';
+import { getServiceBinding, serviceToken } from '@sap-cloud-sdk/connectivity';
 import type { HttpDestination } from '@sap-cloud-sdk/connectivity';
 import { timeout } from '@sap-cloud-sdk/resilience';
 import { isAxiosError } from 'axios';
@@ -22,6 +23,8 @@ const REQUEST_TIMEOUT_MS = 10_000;
 
 @Injectable()
 export class SapDestinationsService {
+  private readonly logger = new Logger(SapDestinationsService.name);
+
   constructor(
     @InjectModel(SapDestination)
     private readonly sapDestinationModel: typeof SapDestination,
@@ -96,20 +99,54 @@ export class SapDestinationsService {
   // destination is marked OnPremise so the SDK tunnels through the bound Connectivity
   // service + Cloud Connector to reach the on-prem ABAP system. Otherwise it's a
   // direct Internet call (e.g. local dev against an internet-reachable system).
-  private buildDestination(destination: SapDestination): HttpDestination {
+  private async buildDestination(destination: SapDestination): Promise<HttpDestination> {
     const { sapUser, sapPassword } = this.decryptCredentials(destination);
     const locationId =
       destination.cloudConnectorLocationId ||
       this.configService.get<string>('sap.defaultCloudConnectorLocationId') ||
       undefined;
 
-    return {
+    const base: HttpDestination = {
       url: destination.url,
       username: sapUser,
       password: sapPassword,
       authentication: 'BasicAuthentication',
       proxyType: locationId ? 'OnPremise' : 'Internet',
       ...(locationId ? { cloudConnectorLocationId: locationId } : {}),
+    };
+
+    if (!locationId) {
+      return base;
+    }
+    // The SDK only attaches the on-premise proxy for destinations it fetches from the
+    // Destination service by name; for ad-hoc destinations like ours `proxyType:
+    // 'OnPremise'` alone is ignored and it dials the private host directly. Attach the
+    // Connectivity service proxy ourselves so the call tunnels via Cloud Connector.
+    return { ...base, proxyConfiguration: await this.onPremiseProxyConfiguration(locationId) };
+  }
+
+  private async onPremiseProxyConfiguration(locationId: string) {
+    const binding = getServiceBinding('connectivity');
+    if (!binding) {
+      throw new Error(
+        'No connectivity service binding found — bind a connectivity service instance to reach on-premise systems via Cloud Connector.',
+      );
+    }
+    const credentials = binding.credentials as unknown as {
+      onpremise_proxy_host: string;
+      onpremise_proxy_http_port?: string | number;
+      onpremise_proxy_port?: string | number;
+    };
+    const token = await serviceToken(binding);
+
+    return {
+      host: credentials.onpremise_proxy_host,
+      port: Number(credentials.onpremise_proxy_http_port ?? credentials.onpremise_proxy_port),
+      protocol: 'http' as const,
+      headers: {
+        'Proxy-Authorization': `Bearer ${token}`,
+        'SAP-Connectivity-SCC-Location_ID': locationId,
+      },
     };
   }
 
@@ -122,7 +159,7 @@ export class SapDestinationsService {
     method: 'get' | 'post' = 'get',
     data?: unknown,
   ): Promise<HttpResponse> {
-    return executeHttpRequest(this.buildDestination(destination), {
+    return executeHttpRequest(await this.buildDestination(destination), {
       method,
       url: path ?? '',
       ...(data !== undefined ? { data } : {}),
@@ -151,6 +188,7 @@ export class SapDestinationsService {
       };
     } catch (err) {
       const durationMs = Date.now() - start;
+      this.logConnectionError(destination.id, err);
       const status = this.statusFromError(err);
       if (status !== null) {
         const unauthorized = status === 401 || status === 403;
@@ -184,6 +222,36 @@ export class SapDestinationsService {
       return cause.response.status;
     }
     return null;
+  }
+
+  // Logs enough detail to diagnose Connectivity Proxy / Cloud Connector failures
+  // (actual host/port attempted, error code, cause chain) without ever logging
+  // credentials (SAP_USER/SAP_PWD, proxy auth headers).
+  private logConnectionError(destinationId: string, err: unknown): void {
+    const summarize = (e: unknown): Record<string, unknown> => {
+      if (isAxiosError(e)) {
+        return {
+          code: e.code,
+          message: e.message,
+          requestUrl: e.config?.url,
+          baseURL: e.config?.baseURL,
+          proxyHost: e.config?.proxy ? (e.config.proxy as { host?: string }).host : undefined,
+          proxyPort: e.config?.proxy ? (e.config.proxy as { port?: number }).port : undefined,
+        };
+      }
+      if (e instanceof Error) {
+        return { name: e.name, message: e.message };
+      }
+      return { value: String(e) };
+    };
+
+    const cause = (err as { cause?: unknown } | null)?.cause;
+    this.logger.error(
+      `SAP test-connection failed for destination ${destinationId}: ${JSON.stringify({
+        error: summarize(err),
+        ...(cause && cause !== err ? { cause: summarize(cause) } : {}),
+      })}`,
+    );
   }
 
   private detailFromError(err: unknown): string {

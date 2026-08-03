@@ -44,6 +44,7 @@ export const createSapDestination = (payload: {
   name: string;
   description?: string;
   url: string;
+  cloudConnectorLocationId?: string;
   sapUser: string;
   sapPassword: string;
 }) => apiClient.post<SapDestination>('/admin/sap-destinations', payload).then((r) => r.data);
@@ -53,6 +54,7 @@ export const updateSapDestination = (
     name: string;
     description: string;
     url: string;
+    cloudConnectorLocationId: string;
     sapUser: string;
     sapPassword: string;
     isActive: boolean;

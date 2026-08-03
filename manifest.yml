@@ -7,7 +7,7 @@
 applications:
   - name: mcp-studio-api
     docker:
-      image: vishnuvryeruva98/mcp-studio-api:v202607241719
+      image: vishnuvryeruva98/mcp-studio-api:v202608040157
     memory: 512M
     disk_quota: 1G
     instances: 1
@@ -21,6 +21,7 @@ applications:
     services:
       - mcp-studio-connectivity
       - mcp-studio-xsuaa
+      - mcp-studio-destination
       - PostgreSQL-instance
     env:
       NODE_ENV: production
@@ -29,7 +30,7 @@ applications:
 
   - name: mcp-studio-web
     docker:
-      image: vishnuvryeruva98/mcp-studio-web:v202607241719
+      image: vishnuvryeruva98/mcp-studio-web:v202608040157
     memory: 256M
     disk_quota: 512M
     instances: 1

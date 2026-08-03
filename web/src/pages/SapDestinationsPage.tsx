@@ -21,11 +21,14 @@ export default function SapDestinationsPage() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [url, setUrl] = useState('');
+  const [cloudConnectorLocationId, setCloudConnectorLocationId] = useState('');
   const [sapUser, setSapUser] = useState('');
   const [sapPassword, setSapPassword] = useState('');
 
   const [testPaths, setTestPaths] = useState<Record<string, string>>({});
   const [testResults, setTestResults] = useState<Record<string, TestState>>({});
+  const [locationIdDrafts, setLocationIdDrafts] = useState<Record<string, string>>({});
+  const [savingLocationId, setSavingLocationId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -46,6 +49,7 @@ export default function SapDestinationsPage() {
     setName('');
     setDescription('');
     setUrl('');
+    setCloudConnectorLocationId('');
     setSapUser('');
     setSapPassword('');
     setShowForm(false);
@@ -56,13 +60,35 @@ export default function SapDestinationsPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await adminApi.createSapDestination({ name, description, url, sapUser, sapPassword });
+      await adminApi.createSapDestination({
+        name,
+        description,
+        url,
+        cloudConnectorLocationId: cloudConnectorLocationId || undefined,
+        sapUser,
+        sapPassword,
+      });
       resetForm();
       await load();
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Failed to create SAP destination');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function onSaveLocationId(destination: SapDestination) {
+    setSavingLocationId(destination.id);
+    setError(null);
+    try {
+      await adminApi.updateSapDestination(destination.id, {
+        cloudConnectorLocationId: locationIdDrafts[destination.id] ?? '',
+      });
+      await load();
+    } catch (err: any) {
+      setError(err.response?.data?.message ?? 'Failed to update Cloud Connector Location ID');
+    } finally {
+      setSavingLocationId(null);
     }
   }
 
@@ -157,6 +183,16 @@ export default function SapDestinationsPage() {
               />
             </div>
             <div className="field">
+              <label htmlFor="destLocationId">Cloud Connector Location ID (only for on-premise systems)</label>
+              <input
+                id="destLocationId"
+                className="mono"
+                value={cloudConnectorLocationId}
+                onChange={(e) => setCloudConnectorLocationId(e.target.value)}
+                placeholder="e.g. MYGO-BTP-BAS — leave blank for internet-reachable systems"
+              />
+            </div>
+            <div className="field">
               <label htmlFor="sapUser">SAP_USER</label>
               <input id="sapUser" value={sapUser} onChange={(e) => setSapUser(e.target.value)} required />
             </div>
@@ -214,6 +250,24 @@ export default function SapDestinationsPage() {
                       </span>
                     </td>
                     <td>
+                      <div className="row-actions" style={{ marginBottom: 6 }}>
+                        <input
+                          className="mono"
+                          style={{ width: 160 }}
+                          placeholder="Cloud Connector Location ID"
+                          value={locationIdDrafts[d.id] ?? d.cloudConnectorLocationId ?? ''}
+                          onChange={(e) =>
+                            setLocationIdDrafts((prev) => ({ ...prev, [d.id]: e.target.value }))
+                          }
+                        />
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => onSaveLocationId(d)}
+                          disabled={savingLocationId === d.id}
+                        >
+                          {savingLocationId === d.id ? 'Saving…' : 'Save location ID'}
+                        </button>
+                      </div>
                       <div className="row-actions" style={{ marginBottom: 6 }}>
                         <input
                           className="mono"

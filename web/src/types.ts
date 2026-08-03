@@ -44,6 +44,7 @@ export interface SapDestination {
   name: string;
   description: string | null;
   url: string;
+  cloudConnectorLocationId: string | null;
   isActive: boolean;
   createdByUserId: string;
   createdAt: string;
