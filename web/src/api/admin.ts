@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import type {
+  DiscoveryResult,
   FunctionModule,
   FunctionModuleParam,
   Permission,
@@ -96,3 +97,7 @@ export const updateFunctionModule = (
 ) => apiClient.patch<FunctionModule>(`/admin/function-modules/${id}`, payload).then((r) => r.data);
 export const deleteFunctionModule = (id: string) =>
   apiClient.delete(`/admin/function-modules/${id}`);
+export const discoverServices = (sapDestinationId: string) =>
+  apiClient
+    .get<DiscoveryResult>('/admin/function-modules/discover', { params: { sapDestinationId } })
+    .then((r) => r.data);

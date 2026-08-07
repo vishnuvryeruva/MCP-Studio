@@ -361,3 +361,134 @@ tr:last-child td {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
 }
+
+/* Modal dialog */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(31, 26, 21, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 20px;
+  overflow-y: auto;
+}
+
+.modal-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 48px rgba(31, 26, 21, 0.22);
+  width: 100%;
+  max-width: 560px;
+  margin: auto;
+}
+
+.modal-panel-wide {
+  max-width: 860px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.modal-close {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 22px;
+  line-height: 1;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.modal-close:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+/* "Where do I find this?" field hints */
+.field-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.field-hint {
+  position: relative;
+  display: inline-flex;
+}
+
+.field-hint-icon {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.field-hint-icon:hover,
+.field-hint-icon[aria-expanded='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.field-hint-bubble {
+  position: absolute;
+  top: 22px;
+  left: -8px;
+  z-index: 20;
+  width: max-content;
+  max-width: min(420px, 80vw);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(31, 26, 21, 0.14);
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+}
+
+.field-hint-bubble code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.field-hint-bubble .hint-path {
+  color: var(--text-muted);
+  display: block;
+  margin-top: 6px;
+}

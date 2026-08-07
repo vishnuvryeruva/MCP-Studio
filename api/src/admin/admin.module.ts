@@ -13,6 +13,7 @@ import { RolesService } from './services/roles.service';
 import { UsersService } from './services/users.service';
 import { SapDestinationsService } from './services/sap-destinations.service';
 import { FunctionModulesService } from './services/function-modules.service';
+import { ServiceDiscoveryService } from './services/service-discovery.service';
 
 @Module({
   imports: [
@@ -25,6 +26,12 @@ import { FunctionModulesService } from './services/function-modules.service';
     SapDestinationsController,
     FunctionModulesController,
   ],
-  providers: [RolesService, UsersService, SapDestinationsService, FunctionModulesService],
+  providers: [
+    RolesService,
+    UsersService,
+    SapDestinationsService,
+    FunctionModulesService,
+    ServiceDiscoveryService,
+  ],
 })
 export class AdminModule {}

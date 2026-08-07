@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -15,6 +16,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permission } from '../../common/enums/permission.enum';
 import type { AuthenticatedUser } from '../../common/interfaces/jwt-payload.interface';
 import { FunctionModulesService } from '../services/function-modules.service';
+import { ServiceDiscoveryService } from '../services/service-discovery.service';
 import { CreateFunctionModuleDto } from '../dto/create-function-module.dto';
 import { UpdateFunctionModuleDto } from '../dto/update-function-module.dto';
 
@@ -22,11 +24,23 @@ import { UpdateFunctionModuleDto } from '../dto/update-function-module.dto';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @RequirePermissions(Permission.MANAGE_FUNCTION_MODULES)
 export class FunctionModulesController {
-  constructor(private readonly functionModulesService: FunctionModulesService) {}
+  constructor(
+    private readonly functionModulesService: FunctionModulesService,
+    private readonly serviceDiscoveryService: ServiceDiscoveryService,
+  ) {}
 
   @Get()
   findAll(@CurrentUser() user: AuthenticatedUser) {
     return this.functionModulesService.findAll(user.organizationId);
+  }
+
+  // Declared before the ':id' route so "discover" isn't swallowed as an id.
+  @Get('discover')
+  discover(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('sapDestinationId') sapDestinationId: string,
+  ) {
+    return this.serviceDiscoveryService.discover(user.organizationId, sapDestinationId);
   }
 
   @Get(':id')

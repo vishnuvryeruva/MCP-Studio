@@ -72,6 +72,22 @@ export interface FunctionModule {
   updatedAt: string;
 }
 
+export interface DiscoveredService {
+  id: string;
+  title: string;
+  description: string;
+  servicePath: string;
+  metadataPath: string;
+  technicalName: string;
+  version: string;
+}
+
+export interface DiscoveryResult {
+  services: DiscoveredService[];
+  catalogPath: string | null;
+  message: string;
+}
+
 export interface AuthResponse {
   accessToken: string;
   expiresIn: string;

@@ -1,9 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import * as adminApi from '../api/admin';
-import type { FunctionModule, FunctionModuleParam, SapDestination } from '../types';
+import { FieldHint } from '../components/FieldHint';
+import { Modal } from '../components/Modal';
+import type {
+  DiscoveredService,
+  FunctionModule,
+  FunctionModuleParam,
+  SapDestination,
+} from '../types';
 
 const EMPTY_PARAM: FunctionModuleParam = { name: '', type: 'string', required: true, description: '' };
+
+// Turns an SAP service/technical name into a snake_case tool name for Claude.
+function toToolName(raw: string): string {
+  return raw
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+}
 
 export default function FunctionModulesPage() {
   const [functionModules, setFunctionModules] = useState<FunctionModule[]>([]);
@@ -19,6 +35,28 @@ export default function FunctionModulesPage() {
   const [fmName, setFmName] = useState('');
   const [fmcallUrl, setFmcallUrl] = useState('');
   const [parameters, setParameters] = useState<FunctionModuleParam[]>([]);
+
+  const [discovering, setDiscovering] = useState(false);
+  const [discovered, setDiscovered] = useState<DiscoveredService[] | null>(null);
+  const [discoveryMessage, setDiscoveryMessage] = useState<string | null>(null);
+  const [discoveryFilter, setDiscoveryFilter] = useState('');
+
+  const whitelistedPaths = useMemo(
+    () => new Set(functionModules.map((fm) => fm.fmcallUrl)),
+    [functionModules],
+  );
+
+  const visibleDiscovered = useMemo(() => {
+    if (!discovered) return [];
+    const q = discoveryFilter.trim().toLowerCase();
+    if (!q) return discovered;
+    return discovered.filter((s) =>
+      [s.title, s.description, s.technicalName, s.servicePath]
+        .join(' ')
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [discovered, discoveryFilter]);
 
   async function load() {
     setLoading(true);
@@ -48,6 +86,35 @@ export default function FunctionModulesPage() {
     setFmcallUrl('');
     setParameters([]);
     setShowForm(false);
+  }
+
+  async function onDiscover() {
+    if (!sapDestinationId) return;
+    setDiscovering(true);
+    setError(null);
+    setDiscovered(null);
+    setDiscoveryMessage(null);
+    try {
+      const result = await adminApi.discoverServices(sapDestinationId);
+      setDiscovered(result.services);
+      setDiscoveryMessage(result.message);
+    } catch (err: any) {
+      setDiscoveryMessage(null);
+      setError(err.response?.data?.message ?? 'Service discovery failed');
+    } finally {
+      setDiscovering(false);
+    }
+  }
+
+  // Prefills the create form from a discovered service so the admin only has to
+  // review the tool name/description Claude will see.
+  function useDiscoveredService(service: DiscoveredService) {
+    setName(toToolName(service.technicalName || service.title));
+    setDescription(service.description || service.title);
+    setFmName(service.technicalName || service.title);
+    setFmcallUrl(service.servicePath);
+    setParameters([]);
+    setShowForm(true);
   }
 
   function addParam() {
@@ -125,6 +192,97 @@ export default function FunctionModulesPage() {
 
       {error && <div className="error-banner">{error}</div>}
 
+      {destinations.length > 0 && (
+        <div className="card">
+          <h2>
+            Discover from SAP{' '}
+            <FieldHint>
+              Reads the <strong>SAP Gateway OData service catalog</strong> on the selected
+              destination and lists the services already active there, so you can whitelist one
+              without typing paths by hand.
+              <br />
+              Only OData services registered in SAP Gateway are discoverable. Raw RFC/BAPI function
+              modules and custom ICF handlers (e.g. <code>/sap/bc/http/sap/Z...</code>) have no
+              standard HTTP catalog — add those manually below.
+              <span className="hint-path">
+                Requires the catalog service to be active in SAP (transaction
+                /IWFND/MAINT_SERVICE).
+              </span>
+            </FieldHint>
+          </h2>
+          <div className="row-actions" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+            <select
+              value={sapDestinationId}
+              onChange={(e) => setSapDestinationId(e.target.value)}
+              aria-label="SAP destination to discover from"
+            >
+              {destinations.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+            <button className="btn" onClick={onDiscover} disabled={discovering}>
+              {discovering ? 'Discovering…' : 'Discover services'}
+            </button>
+            {discovered && discovered.length > 0 && (
+              <input
+                style={{ minWidth: 220 }}
+                placeholder="Filter services…"
+                value={discoveryFilter}
+                onChange={(e) => setDiscoveryFilter(e.target.value)}
+              />
+            )}
+          </div>
+
+          {discoveryMessage && <p className="text-muted">{discoveryMessage}</p>}
+
+          {discovered && discovered.length > 0 && (
+            <table>
+              <thead>
+                <tr>
+                  <th>Service</th>
+                  <th>Path</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleDiscovered.map((s) => {
+                  const alreadyAdded = whitelistedPaths.has(s.servicePath);
+                  return (
+                    <tr key={s.servicePath}>
+                      <td>
+                        <div>{s.title}</div>
+                        {s.description && s.description !== s.title && (
+                          <div className="text-muted">{s.description}</div>
+                        )}
+                      </td>
+                      <td className="mono">{s.servicePath}</td>
+                      <td>
+                        {alreadyAdded ? (
+                          <span className="badge badge-success">Whitelisted</span>
+                        ) : (
+                          <button className="btn btn-sm" onClick={() => useDiscoveredService(s)}>
+                            Whitelist this
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {visibleDiscovered.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="empty-state">
+                      No services match &ldquo;{discoveryFilter}&rdquo;.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
       {destinations.length === 0 && !loading && (
         <div className="card">
           <p className="empty-state">Connect a SAP destination first before whitelisting an FM.</p>
@@ -132,8 +290,7 @@ export default function FunctionModulesPage() {
       )}
 
       {showForm && (
-        <div className="card">
-          <h2>New function module</h2>
+        <Modal title="New function module" onClose={resetForm} wide>
           <form onSubmit={onSubmit}>
             <div className="field">
               <label htmlFor="fmDest">SAP destination</label>
@@ -242,7 +399,7 @@ export default function FunctionModulesPage() {
               </button>
             </div>
           </form>
-        </div>
+        </Modal>
       )}
 
       <div className="card">

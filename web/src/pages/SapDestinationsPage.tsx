@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import * as adminApi from '../api/admin';
+import { FieldHint } from '../components/FieldHint';
+import { Modal } from '../components/Modal';
 import type { SapDestination } from '../types';
 
 interface TestState {
@@ -151,11 +153,17 @@ export default function SapDestinationsPage() {
       {error && <div className="error-banner">{error}</div>}
 
       {showForm && (
-        <div className="card">
-          <h2>New SAP destination</h2>
+        <Modal title="New SAP destination" onClose={resetForm}>
           <form onSubmit={onSubmit}>
             <div className="field">
-              <label htmlFor="destName">Destination name</label>
+              <div className="field-label-row">
+                <label htmlFor="destName">Destination name</label>
+                <FieldHint>
+                  Any label you choose — it&apos;s only used inside this app to identify the
+                  connection. It does <strong>not</strong> have to match a destination name in SAP
+                  BTP.
+                </FieldHint>
+              </div>
               <input
                 id="destName"
                 value={name}
@@ -165,7 +173,10 @@ export default function SapDestinationsPage() {
               />
             </div>
             <div className="field">
-              <label htmlFor="destDescription">Description</label>
+              <div className="field-label-row">
+                <label htmlFor="destDescription">Description</label>
+                <FieldHint>Optional note for your own reference. Nothing to look up.</FieldHint>
+              </div>
               <input
                 id="destDescription"
                 value={description}
@@ -173,7 +184,23 @@ export default function SapDestinationsPage() {
               />
             </div>
             <div className="field">
-              <label htmlFor="destUrl">Base URL</label>
+              <div className="field-label-row">
+                <label htmlFor="destUrl">Base URL</label>
+                <FieldHint>
+                  The address of your SAP system, <strong>without</strong> any API path.
+                  <br />
+                  <strong>On-premise (via Cloud Connector):</strong> use the internal host/IP and
+                  port exactly as listed under <em>Exposed Back-End Systems</em> — e.g.{' '}
+                  <code>http://192.168.171.43:8000</code>. A private IP is expected here; it works
+                  because traffic is tunneled through the Cloud Connector.
+                  <br />
+                  <strong>Internet-reachable SAP:</strong> use its public HTTPS URL.
+                  <span className="hint-path">
+                    BTP Cockpit → Connectivity → Cloud Connectors → your connector → Cloud To
+                    On-Premise
+                  </span>
+                </FieldHint>
+              </div>
               <input
                 id="destUrl"
                 value={url}
@@ -183,7 +210,24 @@ export default function SapDestinationsPage() {
               />
             </div>
             <div className="field">
-              <label htmlFor="destLocationId">Cloud Connector Location ID (only for on-premise systems)</label>
+              <div className="field-label-row">
+                <label htmlFor="destLocationId">Cloud Connector Location ID</label>
+                <FieldHint>
+                  <strong>Required only for on-premise systems</strong> reached through a Cloud
+                  Connector — leave blank for internet-reachable SAP systems.
+                  <br />
+                  This is the connector&apos;s <em>Location ID</em> (e.g.{' '}
+                  <code>MYGO-BTP-BAS</code>) — <strong>not</strong> the long &ldquo;Connector
+                  ID&rdquo; hex string shown on the connector&apos;s overview page.
+                  <br />
+                  Tip: if a destination already exists in BTP for this system, its{' '}
+                  <code>CloudConnectorLocationId</code> property shows the exact value.
+                  <span className="hint-path">
+                    BTP Cockpit → Connectivity → Destinations → open any on-premise destination →
+                    Additional Properties
+                  </span>
+                </FieldHint>
+              </div>
               <input
                 id="destLocationId"
                 className="mono"
@@ -193,11 +237,34 @@ export default function SapDestinationsPage() {
               />
             </div>
             <div className="field">
-              <label htmlFor="sapUser">SAP_USER</label>
+              <div className="field-label-row">
+                <label htmlFor="sapUser">SAP_USER</label>
+                <FieldHint>
+                  A user that exists <strong>in the SAP backend system itself</strong> (created in
+                  transaction <code>SU01</code>) — usually a short technical name like{' '}
+                  <code>RFC_USER</code>.
+                  <br />
+                  <strong>This is not your SAP BTP login.</strong> Your BTP cockpit email/password
+                  will be rejected with HTTP 401 — BTP and the ABAP backend are separate user
+                  stores.
+                  <br />
+                  Ask your SAP Basis team for a dedicated service/communication user rather than
+                  using a personal login.
+                  <span className="hint-path">
+                    To verify it works: BTP Cockpit → Connectivity → Destinations → Check Connection
+                  </span>
+                </FieldHint>
+              </div>
               <input id="sapUser" value={sapUser} onChange={(e) => setSapUser(e.target.value)} required />
             </div>
             <div className="field">
-              <label htmlFor="sapPassword">SAP_PWD</label>
+              <div className="field-label-row">
+                <label htmlFor="sapPassword">SAP_PWD</label>
+                <FieldHint>
+                  The backend password for the SAP_USER above. Stored encrypted (AES-256-GCM) and
+                  never shown again after saving.
+                </FieldHint>
+              </div>
               <input
                 id="sapPassword"
                 type="password"
@@ -215,7 +282,7 @@ export default function SapDestinationsPage() {
               </button>
             </div>
           </form>
-        </div>
+        </Modal>
       )}
 
       <div className="card">
@@ -251,6 +318,15 @@ export default function SapDestinationsPage() {
                     </td>
                     <td>
                       <div className="row-actions" style={{ marginBottom: 6 }}>
+                        <FieldHint>
+                          Required for on-premise systems reached via Cloud Connector (e.g.{' '}
+                          <code>MYGO-BTP-BAS</code>); leave blank for internet-reachable SAP
+                          systems. Not the long hex &ldquo;Connector ID&rdquo;.
+                          <span className="hint-path">
+                            BTP Cockpit → Connectivity → Destinations → Additional Properties →
+                            CloudConnectorLocationId
+                          </span>
+                        </FieldHint>
                         <input
                           className="mono"
                           style={{ width: 160 }}
@@ -269,6 +345,17 @@ export default function SapDestinationsPage() {
                         </button>
                       </div>
                       <div className="row-actions" style={{ marginBottom: 6 }}>
+                        <FieldHint>
+                          Optional path appended to the Base URL when testing. Leave blank to hit
+                          the root — note many SAP systems return <strong>404</strong> at the root
+                          even when the connection is fine, so testing a real path is more
+                          meaningful. Example:{' '}
+                          <code>/sap/opu/odata/sap/API_PURCHASEORDER_PROCESS_SRV/</code>
+                          <span className="hint-path">
+                            A 404 still proves the tunnel works; 401 means the credentials were
+                            rejected.
+                          </span>
+                        </FieldHint>
                         <input
                           className="mono"
                           style={{ width: 160 }}
