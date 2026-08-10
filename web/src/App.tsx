@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import DashboardLayout from './pages/DashboardLayout';
 import DashboardHome from './pages/DashboardHome';
+import ChatPage from './pages/ChatPage';
 import RolesPage from './pages/RolesPage';
 import UsersPage from './pages/UsersPage';
 import SapDestinationsPage from './pages/SapDestinationsPage';
@@ -22,6 +23,8 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<DashboardLayout />}>
               <Route path="/" element={<DashboardHome />} />
+              {/* Chat is the end-user surface — no admin permission required. */}
+              <Route path="/chat" element={<ChatPage />} />
               <Route
                 path="/roles"
                 element={

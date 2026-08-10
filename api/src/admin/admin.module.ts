@@ -33,5 +33,8 @@ import { ServiceDiscoveryService } from './services/service-discovery.service';
     FunctionModulesService,
     ServiceDiscoveryService,
   ],
+  // Chat reuses the SAP caller so fmcall invocations go through the same
+  // Cloud Connector routing and credential decryption as the admin screens.
+  exports: [SapDestinationsService],
 })
 export class AdminModule {}

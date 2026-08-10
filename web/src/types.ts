@@ -88,6 +88,31 @@ export interface DiscoveryResult {
   message: string;
 }
 
+export interface ChatToolInvocation {
+  toolName: string;
+  fmName: string;
+  arguments: Record<string, unknown>;
+  success: boolean;
+  statusCode: number | null;
+  durationMs: number;
+  message: string;
+}
+
+export interface ChatTurnResult {
+  reply: string;
+  provider: string;
+  model: string;
+  toolInvocations: ChatToolInvocation[];
+  availableToolCount: number;
+}
+
+export interface LlmProviderInfo {
+  name: 'anthropic' | 'openai' | 'gemini';
+  model: string;
+  configured: boolean;
+  active: boolean;
+}
+
 export interface AuthResponse {
   accessToken: string;
   expiresIn: string;

@@ -99,7 +99,10 @@ export class SapDestinationsService {
   // destination is marked OnPremise so the SDK tunnels through the bound Connectivity
   // service + Cloud Connector to reach the on-prem ABAP system. Otherwise it's a
   // direct Internet call (e.g. local dev against an internet-reachable system).
-  private async buildDestination(destination: SapDestination): Promise<HttpDestination> {
+  private async buildDestination(
+    destination: SapDestination,
+    forceFreshProxyToken = false,
+  ): Promise<HttpDestination> {
     const { sapUser, sapPassword } = this.decryptCredentials(destination);
     const locationId =
       destination.cloudConnectorLocationId ||
@@ -122,10 +125,13 @@ export class SapDestinationsService {
     // Destination service by name; for ad-hoc destinations like ours `proxyType:
     // 'OnPremise'` alone is ignored and it dials the private host directly. Attach the
     // Connectivity service proxy ourselves so the call tunnels via Cloud Connector.
-    return { ...base, proxyConfiguration: await this.onPremiseProxyConfiguration(locationId) };
+    return {
+      ...base,
+      proxyConfiguration: await this.onPremiseProxyConfiguration(locationId, forceFreshProxyToken),
+    };
   }
 
-  private async onPremiseProxyConfiguration(locationId: string) {
+  private async onPremiseProxyConfiguration(locationId: string, forceFreshToken = false) {
     const binding = getServiceBinding('connectivity');
     if (!binding) {
       throw new Error(
@@ -137,7 +143,9 @@ export class SapDestinationsService {
       onpremise_proxy_http_port?: string | number;
       onpremise_proxy_port?: string | number;
     };
-    const token = await serviceToken(binding);
+    // serviceToken caches by default; a stale cached token makes the connectivity
+    // proxy reject the call with 407, so allow callers to force a fresh one.
+    const token = await serviceToken(binding, { useCache: !forceFreshToken });
 
     return {
       host: credentials.onpremise_proxy_host,
@@ -159,7 +167,29 @@ export class SapDestinationsService {
     method: 'get' | 'post' = 'get',
     data?: unknown,
   ): Promise<HttpResponse> {
-    return executeHttpRequest(await this.buildDestination(destination), {
+    try {
+      return await this.executeSapRequest(destination, path, method, data, false);
+    } catch (err) {
+      // 407 comes from the BTP connectivity proxy, not SAP — almost always a cached
+      // proxy token that expired while the app stayed up. Refresh it and retry once.
+      if (this.statusFromError(err) === 407) {
+        this.logger.warn(
+          `Connectivity proxy returned 407 for destination ${destination.id}; retrying once with a fresh token`,
+        );
+        return this.executeSapRequest(destination, path, method, data, true);
+      }
+      throw err;
+    }
+  }
+
+  private async executeSapRequest(
+    destination: SapDestination,
+    path: string | undefined,
+    method: 'get' | 'post',
+    data: unknown,
+    forceFreshProxyToken: boolean,
+  ): Promise<HttpResponse> {
+    return executeHttpRequest(await this.buildDestination(destination, forceFreshProxyToken), {
       method,
       url: path ?? '',
       ...(data !== undefined ? { data } : {}),

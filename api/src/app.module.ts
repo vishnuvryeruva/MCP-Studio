@@ -7,6 +7,8 @@ import { AuthModule } from './auth/auth.module';
 import { PublicModule } from './public/public.module';
 import { AdminModule } from './admin/admin.module';
 import { UsersModule } from './users/users.module';
+import { LlmModule } from './llm/llm.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -17,6 +19,8 @@ import { UsersModule } from './users/users.module';
     PublicModule,
     AdminModule,
     UsersModule,
+    LlmModule,
+    ChatModule,
   ],
 })
 export class AppModule {}

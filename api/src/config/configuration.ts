@@ -20,4 +20,31 @@ export default () => ({
     defaultCloudConnectorLocationId:
       process.env.SAP_CLOUD_CONNECTOR_LOCATION_ID ?? '',
   },
+  llm: {
+    // Active vendor: anthropic | openai | gemini. Keys come from the environment
+    // for now; per-organization settings can override this later.
+    provider: process.env.LLM_PROVIDER ?? 'anthropic',
+    maxTokens: parseInt(process.env.LLM_MAX_TOKENS ?? '16000', 10),
+    // Anthropic-only: thinking depth / token spend (low | medium | high).
+    effort: process.env.LLM_EFFORT ?? 'medium',
+    // Caps how many tool-call rounds one chat turn may run before giving up.
+    maxToolIterations: parseInt(process.env.LLM_MAX_TOOL_ITERATIONS ?? '5', 10),
+    // Truncation guard so a large SAP payload can't blow the context window.
+    maxToolResultChars: parseInt(process.env.LLM_MAX_TOOL_RESULT_CHARS ?? '20000', 10),
+    anthropic: {
+      apiKey: process.env.ANTHROPIC_API_KEY ?? '',
+      model: process.env.ANTHROPIC_MODEL ?? 'claude-opus-5',
+      // Override for proxies or local testing; unset means the public API.
+      baseUrl: process.env.ANTHROPIC_BASE_URL ?? '',
+    },
+    openai: {
+      apiKey: process.env.OPENAI_API_KEY ?? '',
+      model: process.env.OPENAI_MODEL ?? 'gpt-4o',
+      baseUrl: process.env.OPENAI_BASE_URL ?? '',
+    },
+    gemini: {
+      apiKey: process.env.GEMINI_API_KEY ?? '',
+      model: process.env.GEMINI_MODEL ?? 'gemini-2.5-pro',
+    },
+  },
 });

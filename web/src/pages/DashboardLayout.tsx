@@ -18,6 +18,7 @@ export default function DashboardLayout() {
           <NavLink to="/" end>
             Overview
           </NavLink>
+          <NavLink to="/chat">Ask SAP</NavLink>
           {hasPermission('manage_sap_destinations') && (
             <NavLink to="/sap-destinations">SAP Destinations</NavLink>
           )}

@@ -362,6 +362,124 @@ tr:last-child td {
   font-size: 13px;
 }
 
+/* Chat */
+.chat-card {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 200px);
+  min-height: 420px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.chat-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.chat-empty {
+  margin: auto;
+  text-align: center;
+}
+
+.chat-tool-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  text-align: left;
+  display: inline-block;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.chat-row {
+  display: flex;
+  flex-direction: column;
+  max-width: 78%;
+}
+
+.chat-row-user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.chat-row-assistant {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.chat-bubble {
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.chat-row-user .chat-bubble {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.chat-bubble-error {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: rgba(214, 69, 69, 0.06);
+}
+
+.chat-bubble-thinking {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.chat-tools {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat-tool {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chat-composer {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.chat-composer input {
+  flex: 1;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.chat-composer input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.chat-send {
+  width: auto;
+  flex-shrink: 0;
+}
+
 /* Modal dialog */
 .modal-backdrop {
   position: fixed;
