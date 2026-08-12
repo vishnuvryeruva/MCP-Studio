@@ -253,6 +253,11 @@ export default function FunctionModulesPage() {
                     <tr key={s.servicePath}>
                       <td>
                         <div>{s.title}</div>
+                        {/* The technical name is what becomes the tool/FM name, so show
+                            it here rather than surprising the admin in the form. */}
+                        {s.technicalName && s.technicalName !== s.title && (
+                          <div className="text-muted mono">{s.technicalName}</div>
+                        )}
                         {s.description && s.description !== s.title && (
                           <div className="text-muted">{s.description}</div>
                         )}

@@ -81,8 +81,12 @@ export class ServiceDiscoveryService {
       .map((entry) => {
         const row = entry as Record<string, unknown>;
         const serviceUrl = this.asString(row.ServiceUrl);
-        const servicePath = this.toPath(serviceUrl, destination);
-        if (!servicePath) return null;
+        const rawPath = this.toPath(serviceUrl, destination);
+        if (!rawPath) return null;
+        // Keep the trailing slash: SAP Gateway 30x-redirects the slash-less form, and
+        // a redirect through the connectivity proxy loses the Proxy-Authorization
+        // header, which surfaces later as a confusing HTTP 407.
+        const servicePath = rawPath.endsWith('/') ? rawPath : `${rawPath}/`;
 
         return {
           id: this.asString(row.ID) || servicePath,

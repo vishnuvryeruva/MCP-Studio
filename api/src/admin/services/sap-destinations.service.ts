@@ -189,12 +189,32 @@ export class SapDestinationsService {
     data: unknown,
     forceFreshProxyToken: boolean,
   ): Promise<HttpResponse> {
-    return executeHttpRequest(await this.buildDestination(destination, forceFreshProxyToken), {
-      method,
-      url: path ?? '',
-      ...(data !== undefined ? { data } : {}),
-      middleware: [timeout(REQUEST_TIMEOUT_MS)],
-    });
+    return executeHttpRequest(
+      await this.buildDestination(destination, forceFreshProxyToken),
+      {
+        method,
+        url: path ?? '',
+        ...(data !== undefined ? { data } : {}),
+        middleware: [timeout(REQUEST_TIMEOUT_MS)],
+        // Don't auto-follow redirects: the Proxy-Authorization header we attach for
+        // Cloud Connector is not re-applied to the redirected request, so a silent
+        // 30x (e.g. SAP Gateway adding a trailing slash) resurfaces as a misleading
+        // 407. Failing on the 30x lets us report the exact URL to use instead.
+        maxRedirects: 0,
+      },
+    );
+  }
+
+  // Pulls the redirect target out of a 30x so the caller can tell the admin which
+  // URL to whitelist, instead of reporting a downstream proxy-auth failure.
+  redirectTargetFromError(err: unknown): string | null {
+    const status = this.statusFromError(err);
+    if (!status || status < 300 || status >= 400) return null;
+    const headers =
+      (err as { response?: { headers?: Record<string, string> } })?.response?.headers ??
+      (err as { cause?: { response?: { headers?: Record<string, string> } } })?.cause?.response
+        ?.headers;
+    return headers?.location ?? headers?.Location ?? '(unknown location)';
   }
 
   // Makes a real outbound call to the SAP destination (optionally a specific fmcall
@@ -220,6 +240,15 @@ export class SapDestinationsService {
       const durationMs = Date.now() - start;
       this.logConnectionError(destination.id, err);
       const status = this.statusFromError(err);
+      const redirectTarget = this.redirectTargetFromError(err);
+      if (redirectTarget) {
+        return {
+          success: false,
+          statusCode: status,
+          durationMs,
+          message: `SAP redirected this URL (HTTP ${status}) to "${redirectTarget}". Use that exact path — a redirect cannot be followed through the Cloud Connector proxy. Adding a trailing slash usually fixes it.`,
+        };
+      }
       if (status !== null) {
         const unauthorized = status === 401 || status === 403;
         return {

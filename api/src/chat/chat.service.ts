@@ -267,7 +267,10 @@ export class ChatService {
     } catch (err) {
       const status = this.statusFromError(err);
       const detail = err instanceof Error ? err.message : 'Unknown error';
-      const message = this.describeSapFailure(status, detail);
+      const redirectTarget = this.sapDestinationsService.redirectTargetFromError(err);
+      const message = redirectTarget
+        ? `SAP redirected this fmcall URL (HTTP ${status}) to "${redirectTarget}". Update the whitelisted URL to that exact path — redirects cannot be followed through the Cloud Connector proxy.`
+        : this.describeSapFailure(status, detail);
       this.logger.warn(`Tool "${call.name}" failed for org ${organizationId}: ${message}`);
       return {
         invocation: {
