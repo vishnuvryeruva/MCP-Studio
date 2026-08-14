@@ -18,6 +18,7 @@ export default function SapDestinationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const [name, setName] = useState('');
@@ -29,8 +30,6 @@ export default function SapDestinationsPage() {
 
   const [testPaths, setTestPaths] = useState<Record<string, string>>({});
   const [testResults, setTestResults] = useState<Record<string, TestState>>({});
-  const [locationIdDrafts, setLocationIdDrafts] = useState<Record<string, string>>({});
-  const [savingLocationId, setSavingLocationId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -54,7 +53,24 @@ export default function SapDestinationsPage() {
     setCloudConnectorLocationId('');
     setSapUser('');
     setSapPassword('');
+    setEditingId(null);
     setShowForm(false);
+  }
+
+  function openCreate() {
+    resetForm();
+    setShowForm(true);
+  }
+
+  function openEdit(destination: SapDestination) {
+    setName(destination.name);
+    setDescription(destination.description ?? '');
+    setUrl(destination.url);
+    setCloudConnectorLocationId(destination.cloudConnectorLocationId ?? '');
+    setSapUser('');
+    setSapPassword('');
+    setEditingId(destination.id);
+    setShowForm(true);
   }
 
   async function onSubmit(e: FormEvent) {
@@ -62,35 +78,37 @@ export default function SapDestinationsPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await adminApi.createSapDestination({
-        name,
-        description,
-        url,
-        cloudConnectorLocationId: cloudConnectorLocationId || undefined,
-        sapUser,
-        sapPassword,
-      });
+      if (editingId) {
+        const payload: Parameters<typeof adminApi.updateSapDestination>[1] = {
+          name,
+          description,
+          url,
+          cloudConnectorLocationId: cloudConnectorLocationId || undefined,
+        };
+        const trimmedUser = sapUser.trim();
+        const trimmedPassword = sapPassword.trim();
+        if (trimmedUser) payload.sapUser = trimmedUser;
+        if (trimmedPassword) payload.sapPassword = trimmedPassword;
+        await adminApi.updateSapDestination(editingId, payload);
+      } else {
+        await adminApi.createSapDestination({
+          name,
+          description,
+          url,
+          cloudConnectorLocationId: cloudConnectorLocationId || undefined,
+          sapUser,
+          sapPassword,
+        });
+      }
       resetForm();
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.message ?? 'Failed to create SAP destination');
+      setError(
+        err.response?.data?.message ??
+          (editingId ? 'Failed to update SAP destination' : 'Failed to create SAP destination'),
+      );
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function onSaveLocationId(destination: SapDestination) {
-    setSavingLocationId(destination.id);
-    setError(null);
-    try {
-      await adminApi.updateSapDestination(destination.id, {
-        cloudConnectorLocationId: locationIdDrafts[destination.id] ?? '',
-      });
-      await load();
-    } catch (err: any) {
-      setError(err.response?.data?.message ?? 'Failed to update Cloud Connector Location ID');
-    } finally {
-      setSavingLocationId(null);
     }
   }
 
@@ -144,7 +162,7 @@ export default function SapDestinationsPage() {
           <p>Connect a BTP destination for your SAP system. Credentials are encrypted at rest.</p>
         </div>
         {!showForm && (
-          <button className="btn" onClick={() => setShowForm(true)}>
+          <button className="btn" onClick={openCreate}>
             New destination
           </button>
         )}
@@ -153,7 +171,7 @@ export default function SapDestinationsPage() {
       {error && <div className="error-banner">{error}</div>}
 
       {showForm && (
-        <Modal title="New SAP destination" onClose={resetForm}>
+        <Modal title={editingId ? 'Edit SAP destination' : 'New SAP destination'} onClose={resetForm}>
           <form onSubmit={onSubmit}>
             <div className="field">
               <div className="field-label-row">
@@ -255,7 +273,13 @@ export default function SapDestinationsPage() {
                   </span>
                 </FieldHint>
               </div>
-              <input id="sapUser" value={sapUser} onChange={(e) => setSapUser(e.target.value)} required />
+              <input
+                id="sapUser"
+                value={sapUser}
+                onChange={(e) => setSapUser(e.target.value)}
+                placeholder={editingId ? 'Leave blank to keep the current user' : undefined}
+                required={!editingId}
+              />
             </div>
             <div className="field">
               <div className="field-label-row">
@@ -263,6 +287,12 @@ export default function SapDestinationsPage() {
                 <FieldHint>
                   The backend password for the SAP_USER above. Stored encrypted (AES-256-GCM) and
                   never shown again after saving.
+                  {editingId && (
+                    <>
+                      {' '}
+                      Leave blank to keep the current password.
+                    </>
+                  )}
                 </FieldHint>
               </div>
               <input
@@ -270,12 +300,13 @@ export default function SapDestinationsPage() {
                 type="password"
                 value={sapPassword}
                 onChange={(e) => setSapPassword(e.target.value)}
-                required
+                placeholder={editingId ? 'Leave blank to keep the current password' : undefined}
+                required={!editingId}
               />
             </div>
             <div className="form-actions">
               <button className="btn btn-primary" type="submit" disabled={submitting}>
-                Save destination
+                {editingId ? 'Save changes' : 'Save destination'}
               </button>
               <button className="btn" type="button" onClick={resetForm}>
                 Cancel
@@ -319,33 +350,6 @@ export default function SapDestinationsPage() {
                     <td>
                       <div className="row-actions" style={{ marginBottom: 6 }}>
                         <FieldHint>
-                          Required for on-premise systems reached via Cloud Connector (e.g.{' '}
-                          <code>MYGO-BTP-BAS</code>); leave blank for internet-reachable SAP
-                          systems. Not the long hex &ldquo;Connector ID&rdquo;.
-                          <span className="hint-path">
-                            BTP Cockpit → Connectivity → Destinations → Additional Properties →
-                            CloudConnectorLocationId
-                          </span>
-                        </FieldHint>
-                        <input
-                          className="mono"
-                          style={{ width: 160 }}
-                          placeholder="Cloud Connector Location ID"
-                          value={locationIdDrafts[d.id] ?? d.cloudConnectorLocationId ?? ''}
-                          onChange={(e) =>
-                            setLocationIdDrafts((prev) => ({ ...prev, [d.id]: e.target.value }))
-                          }
-                        />
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => onSaveLocationId(d)}
-                          disabled={savingLocationId === d.id}
-                        >
-                          {savingLocationId === d.id ? 'Saving…' : 'Save location ID'}
-                        </button>
-                      </div>
-                      <div className="row-actions" style={{ marginBottom: 6 }}>
-                        <FieldHint>
                           Optional path appended to the Base URL when testing. Leave blank to hit
                           the root — note many SAP systems return <strong>404</strong> at the root
                           even when the connection is fine, so testing a real path is more
@@ -365,6 +369,9 @@ export default function SapDestinationsPage() {
                             setTestPaths((prev) => ({ ...prev, [d.id]: e.target.value }))
                           }
                         />
+                        <button className="btn btn-sm" onClick={() => openEdit(d)}>
+                          Edit
+                        </button>
                         <button
                           className="btn btn-sm"
                           onClick={() => onTestConnection(d)}

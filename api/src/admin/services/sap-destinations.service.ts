@@ -71,11 +71,15 @@ export class SapDestinationsService {
   async update(organizationId: string, id: string, dto: UpdateSapDestinationDto) {
     const destination = await this.findOneOrThrow(organizationId, id);
     const { sapUser, sapPassword, ...rest } = dto;
+    const trimmedUser = sapUser?.trim();
+    const trimmedPassword = sapPassword?.trim();
     await destination.update({
       ...rest,
-      ...(sapUser ? { encryptedSapUser: this.encryptionService.encrypt(sapUser) } : {}),
-      ...(sapPassword
-        ? { encryptedSapPassword: this.encryptionService.encrypt(sapPassword) }
+      // Credentials are write-only over the API — only replace them when the
+      // client sends a non-empty value (edit forms leave these fields blank).
+      ...(trimmedUser ? { encryptedSapUser: this.encryptionService.encrypt(trimmedUser) } : {}),
+      ...(trimmedPassword
+        ? { encryptedSapPassword: this.encryptionService.encrypt(trimmedPassword) }
         : {}),
     });
     return this.toSafeResponse(destination);

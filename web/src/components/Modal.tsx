@@ -14,21 +14,25 @@ interface ModalProps {
 export function Modal({ title, onClose, children, wide }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     previouslyFocused.current = document.activeElement as HTMLElement | null;
 
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') onCloseRef.current();
     }
     document.addEventListener('keydown', onKeyDown);
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    // Focus the first field so the form is immediately usable from the keyboard.
+    // Focus the first form field (not the header close button) so the form is
+    // immediately usable from the keyboard. Run once on mount — re-running on
+    // every parent render would steal focus back from the field being typed in.
     const firstField = panelRef.current?.querySelector<HTMLElement>(
-      'input, select, textarea, button',
+      '.modal-body input, .modal-body select, .modal-body textarea',
     );
     firstField?.focus();
 
@@ -37,7 +41,7 @@ export function Modal({ title, onClose, children, wide }: ModalProps) {
       document.body.style.overflow = previousOverflow;
       previouslyFocused.current?.focus();
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
