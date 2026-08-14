@@ -13,7 +13,9 @@ export default function DashboardLayout() {
   return (
     <div className="dashboard">
       <aside className="sidebar">
-        <div className="sidebar-brand">MyGo FM Bridge</div>
+        <div className="sidebar-brand">
+          <span className="sidebar-brand-accent">MyGo</span> FM Bridge
+        </div>
         <nav className="sidebar-nav">
           <NavLink to="/" end>
             Overview
