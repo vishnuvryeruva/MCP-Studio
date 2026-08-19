@@ -34,6 +34,7 @@ export interface CurrentUser {
   isOwner: boolean;
   organizationId: string;
   isActive: boolean;
+  llmProvider: 'anthropic' | 'openai' | 'gemini';
   role: { id: string; name: string; permissions: Permission[] } | null;
   permissions: Permission[];
 }
@@ -122,6 +123,7 @@ export interface AuthResponse {
     email: string;
     isOwner: boolean;
     organizationId: string;
+    llmProvider: 'anthropic' | 'openai' | 'gemini';
     role: { id: string; name: string; permissions: Permission[] } | null;
   };
 }

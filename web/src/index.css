@@ -169,6 +169,16 @@ button {
   margin-bottom: 16px;
 }
 
+.success-banner {
+  background: rgba(47, 158, 107, 0.1);
+  border: 1px solid var(--success);
+  color: var(--success);
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
 .auth-footer {
   margin-top: 20px;
   text-align: center;
@@ -382,6 +392,41 @@ tr:last-child td {
   display: flex;
   gap: 10px;
   margin-top: 8px;
+}
+
+.provider-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.provider-option {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface-2);
+}
+
+.provider-option-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.provider-option-disabled {
+  opacity: 0.65;
+}
+
+.provider-option-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.provider-save-btn {
+  width: auto;
 }
 
 .text-muted {

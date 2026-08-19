@@ -35,6 +35,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       organizationId: user.organizationId,
       isOwner: user.isOwner,
       permissions: user.role?.permissions ?? [],
+      llmProvider: user.llmProvider,
     };
   }
 }

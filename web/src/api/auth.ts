@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { AuthResponse } from '../types';
+import type { AuthResponse, CurrentUser } from '../types';
 
 export function signup(payload: {
   organizationName: string;
@@ -15,5 +15,5 @@ export function login(payload: { email: string; password: string }) {
 }
 
 export function fetchMe() {
-  return apiClient.get('/users/me').then((r) => r.data);
+  return apiClient.get<CurrentUser>('/users/me').then((r) => r.data);
 }

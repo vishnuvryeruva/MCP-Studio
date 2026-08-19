@@ -11,6 +11,7 @@ import RolesPage from './pages/RolesPage';
 import UsersPage from './pages/UsersPage';
 import SapDestinationsPage from './pages/SapDestinationsPage';
 import FunctionModulesPage from './pages/FunctionModulesPage';
+import LlmProviderPage from './pages/LlmProviderPage';
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
               <Route path="/" element={<DashboardHome />} />
               {/* Chat is the end-user surface — no admin permission required. */}
               <Route path="/chat" element={<ChatPage />} />
+              <Route path="/llm-provider" element={<LlmProviderPage />} />
               <Route
                 path="/roles"
                 element={

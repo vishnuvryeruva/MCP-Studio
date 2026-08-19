@@ -41,7 +41,7 @@ export class LlmService {
     this.defaultProviderName = configured;
   }
 
-  listProviders(): {
+  listProviders(activeProviderName?: LlmProviderName): {
     name: LlmProviderName;
     model: string;
     configured: boolean;
@@ -51,7 +51,7 @@ export class LlmService {
       name: provider.name,
       model: provider.model,
       configured: provider.isConfigured(),
-      active: provider.name === this.defaultProviderName,
+      active: provider.name === (activeProviderName ?? this.defaultProviderName),
     }));
   }
 

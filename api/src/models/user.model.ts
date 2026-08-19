@@ -8,6 +8,7 @@ import {
 } from 'sequelize-typescript';
 import { Organization } from './organization.model';
 import { Role } from './role.model';
+import type { LlmProviderName } from '../llm/llm-provider.interface';
 
 @Table({
   tableName: 'users',
@@ -50,4 +51,11 @@ export class User extends Model {
 
   @Column({ type: DataType.BOOLEAN, allowNull: false, defaultValue: true })
   declare isActive: boolean;
+
+  @Column({
+    type: DataType.ENUM('anthropic', 'openai', 'gemini'),
+    allowNull: false,
+    defaultValue: 'anthropic',
+  })
+  declare llmProvider: LlmProviderName;
 }

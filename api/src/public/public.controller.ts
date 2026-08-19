@@ -89,6 +89,7 @@ function toUserResponse(user: User) {
     email: user.email,
     isOwner: user.isOwner,
     organizationId: user.organizationId,
+    llmProvider: user.llmProvider,
     role: user.role
       ? { id: user.role.id, name: user.role.name, permissions: user.role.permissions }
       : null,

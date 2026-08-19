@@ -77,6 +77,30 @@ sed -i '' \
 echo "☁️  Deploying to Cloud Foundry..."
 cf push "$@"
 
+# ─── Run DB migrations ─────────────────────────────────────────────────────────
+MIGRATION_TASK_NAME="db-migrate-$TAG"
+echo "🗃️  Running DB migrations with task: $MIGRATION_TASK_NAME"
+cf run-task mcp-studio-api "npm run migrate" --name "$MIGRATION_TASK_NAME"
+
+echo "⏳ Waiting for migration task to finish..."
+while true; do
+  TASK_STATE=$(cf tasks mcp-studio-api | awk -v n="$MIGRATION_TASK_NAME" '$2 == n {print $3}')
+  if [ -z "$TASK_STATE" ]; then
+    echo "❌ Could not find migration task in 'cf tasks' output."
+    exit 1
+  fi
+  if [ "$TASK_STATE" = "SUCCEEDED" ]; then
+    echo "✅ Migrations finished successfully."
+    break
+  fi
+  if [ "$TASK_STATE" = "FAILED" ] || [ "$TASK_STATE" = "CANCELING" ] || [ "$TASK_STATE" = "CANCELLED" ]; then
+    echo "❌ Migration task failed with state: $TASK_STATE"
+    cf tasks mcp-studio-api
+    exit 1
+  fi
+  sleep 3
+done
+
 # ─── Done ─────────────────────────────────────────────────────────────────────
 echo ""
 echo "✅ Deployment complete!"

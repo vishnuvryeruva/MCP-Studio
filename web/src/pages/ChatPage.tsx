@@ -19,6 +19,12 @@ interface AvailableTool {
   fmName: string;
 }
 
+const PROVIDER_LABELS: Record<'anthropic' | 'openai' | 'gemini', string> = {
+  anthropic: 'Claude',
+  openai: 'OpenAI',
+  gemini: 'Gemini',
+};
+
 export default function ChatPage() {
   const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [input, setInput] = useState('');
@@ -103,7 +109,7 @@ export default function ChatPage() {
         </div>
         {activeProvider && (
           <span className="badge" title="Configured model">
-            {activeProvider.name} · {activeProvider.model}
+            {PROVIDER_LABELS[activeProvider.name]} · {activeProvider.model}
           </span>
         )}
       </div>

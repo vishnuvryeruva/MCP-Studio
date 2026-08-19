@@ -17,8 +17,8 @@ export class ChatController {
   ) {}
 
   @Get('providers')
-  listProviders() {
-    return this.llmService.listProviders();
+  listProviders(@CurrentUser() user: AuthenticatedUser) {
+    return this.llmService.listProviders(user.llmProvider);
   }
 
   @Get('tools')
@@ -30,6 +30,7 @@ export class ChatController {
   @HttpCode(HttpStatus.OK)
   message(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChatMessageDto) {
     return this.chatService.handleTurn({
+      userId: user.userId,
       organizationId: user.organizationId,
       message: dto.message,
       history: dto.history ?? [],

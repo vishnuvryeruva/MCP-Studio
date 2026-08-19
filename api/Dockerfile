@@ -20,6 +20,7 @@ ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/migrations ./migrations
 # Cloud Foundry routes to 8080 by default; NestJS reads process.env.PORT.
 ENV PORT=8080
 EXPOSE 8080

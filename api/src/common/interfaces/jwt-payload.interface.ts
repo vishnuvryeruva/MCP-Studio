@@ -1,4 +1,5 @@
 import { Permission } from '../enums/permission.enum';
+import type { LlmProviderName } from '../../llm/llm-provider.interface';
 
 export interface JwtPayload {
   sub: string;
@@ -12,4 +13,5 @@ export interface AuthenticatedUser {
   organizationId: string;
   isOwner: boolean;
   permissions: Permission[];
+  llmProvider: LlmProviderName;
 }

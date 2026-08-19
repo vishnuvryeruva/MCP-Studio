@@ -2,6 +2,7 @@ import { Injectable, Logger, UnprocessableEntityException } from '@nestjs/common
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/sequelize';
 import { FunctionModule } from '../models/function-module.model';
+import { User } from '../models/user.model';
 import { SapDestinationsService } from '../admin/services/sap-destinations.service';
 import { LlmService } from '../llm/llm.service';
 import type {
@@ -11,6 +12,7 @@ import type {
 } from '../llm/llm-provider.interface';
 
 export interface ChatTurnInput {
+  userId: string;
   organizationId: string;
   message: string;
   // Prior turns, so follow-up questions ("and for last quarter?") keep context.
@@ -71,6 +73,8 @@ export class ChatService {
   constructor(
     @InjectModel(FunctionModule)
     private readonly functionModuleModel: typeof FunctionModule,
+    @InjectModel(User)
+    private readonly userModel: typeof User,
     private readonly sapDestinationsService: SapDestinationsService,
     private readonly llmService: LlmService,
     config: ConfigService,
@@ -110,7 +114,8 @@ export class ChatService {
       );
     }
 
-    const provider = this.llmService.resolve();
+    const user = await this.userModel.findByPk(input.userId);
+    const provider = this.llmService.resolve(user?.llmProvider);
     const messages: LlmMessage[] = [
       ...input.history.map((turn) => ({ role: turn.role, content: turn.content }) as LlmMessage),
       { role: 'user', content: input.message },
