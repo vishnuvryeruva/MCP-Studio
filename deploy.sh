@@ -80,7 +80,7 @@ cf push "$@"
 # ─── Run DB migrations ─────────────────────────────────────────────────────────
 MIGRATION_TASK_NAME="db-migrate-$TAG"
 echo "🗃️  Running DB migrations with task: $MIGRATION_TASK_NAME"
-cf run-task mcp-studio-api "npm run migrate" --name "$MIGRATION_TASK_NAME"
+cf run-task mcp-studio-api --command "node /app/migrations/run.js" --name "$MIGRATION_TASK_NAME"
 
 echo "⏳ Waiting for migration task to finish..."
 while true; do

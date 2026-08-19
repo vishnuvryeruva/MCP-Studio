@@ -7,7 +7,7 @@
 applications:
   - name: mcp-studio-api
     docker:
-      image: vishnuvryeruva98/mcp-studio-api:v202608141407
+      image: vishnuvryeruva98/mcp-studio-api:v202608192224
     memory: 512M
     disk_quota: 1G
     instances: 1
@@ -30,7 +30,7 @@ applications:
 
   - name: mcp-studio-web
     docker:
-      image: vishnuvryeruva98/mcp-studio-web:v202608141407
+      image: vishnuvryeruva98/mcp-studio-web:v202608192224
     memory: 256M
     disk_quota: 512M
     instances: 1
