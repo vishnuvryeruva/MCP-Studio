@@ -3,8 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/sequelize';
 import { FunctionModule } from '../models/function-module.model';
 import { User } from '../models/user.model';
-import { SapDestinationsService } from '../admin/services/sap-destinations.service';
+import { FmInvokerService } from '../admin/services/fm-invoker.service';
+import { FmInvocationError } from '../admin/services/fm-invocation.types';
 import { LlmService } from '../llm/llm.service';
+import { ToolIndexService } from '../tool-index/tool-index.service';
 import type {
   LlmMessage,
   LlmToolCall,
@@ -34,7 +36,12 @@ export interface ChatTurnResult {
   provider: string;
   model: string;
   toolInvocations: ChatToolInvocation[];
+  // Everything whitelisted and enabled for the organization.
   availableToolCount: number;
+  // The subset actually offered to the model this turn. Lower than
+  // availableToolCount means the shortlist narrowed it — worth surfacing so a
+  // "no tool can answer that" reply can be traced to the shortlist.
+  advertisedToolCount: number;
 }
 
 const SYSTEM_PROMPT = `You are an assistant that answers questions about a company's SAP data.
@@ -75,8 +82,9 @@ export class ChatService {
     private readonly functionModuleModel: typeof FunctionModule,
     @InjectModel(User)
     private readonly userModel: typeof User,
-    private readonly sapDestinationsService: SapDestinationsService,
+    private readonly fmInvokerService: FmInvokerService,
     private readonly llmService: LlmService,
+    private readonly toolIndexService: ToolIndexService,
     config: ConfigService,
   ) {
     this.maxIterations = config.get<number>('llm.maxToolIterations') ?? 5;
@@ -102,15 +110,31 @@ export class ChatService {
     const functionModules = await this.functionModuleModel.findAll({
       where: { organizationId: input.organizationId, isEnabled: true },
     });
-    const byToolName = new Map(functionModules.map((fm) => [fm.name, fm]));
-    const tools = functionModules.map((fm) => this.toToolDefinition(fm));
 
     // With no tools there is no SAP data to ground an answer in. Calling the model
     // anyway invites it to narrate a plausible-sounding result (and even a fake tool
     // error), so fail loudly instead of returning something that looks like data.
-    if (tools.length === 0) {
+    if (functionModules.length === 0) {
       throw new UnprocessableEntityException(
         'No SAP function modules are whitelisted for this organization, so there is no data to query. Whitelist a function module first.',
+      );
+    }
+
+    // Keyed on the *whole* whitelist, not the advertised subset: the shortlist
+    // decides what the model is told about, not what it is allowed to call. A
+    // module that gets named anyway is still enabled and org-owned, so running it
+    // is safe — and it rescues the turn when the shortlist guessed wrong.
+    const byToolName = new Map(functionModules.map((fm) => [fm.name, fm]));
+
+    const selection = await this.toolIndexService.selectForQuestion(
+      functionModules,
+      input.message,
+      input.history,
+    );
+    const tools = selection.modules.map((fm) => this.toToolDefinition(fm));
+    if (selection.narrowed) {
+      this.logger.log(
+        `Advertising ${tools.length}/${functionModules.length} tools for org ${input.organizationId}: ${selection.reason}`,
       );
     }
 
@@ -140,7 +164,8 @@ export class ChatService {
           provider: provider.name,
           model: provider.model,
           toolInvocations,
-          availableToolCount: tools.length,
+          availableToolCount: functionModules.length,
+          advertisedToolCount: tools.length,
         };
       }
 
@@ -150,7 +175,8 @@ export class ChatService {
           provider: provider.name,
           model: provider.model,
           toolInvocations,
-          availableToolCount: tools.length,
+          availableToolCount: functionModules.length,
+          advertisedToolCount: tools.length,
         };
       }
 
@@ -184,7 +210,8 @@ export class ChatService {
       provider: provider.name,
       model: provider.model,
       toolInvocations,
-      availableToolCount: tools.length,
+      availableToolCount: functionModules.length,
+      advertisedToolCount: tools.length,
     };
   }
 
@@ -236,46 +263,30 @@ export class ChatService {
       };
     }
 
-    // Only parameters the admin declared are forwarded; anything the model invents
-    // is dropped rather than appended to the SAP URL.
-    const declared = new Set((fm.parameters ?? []).map((p) => p.name));
-    const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(call.arguments ?? {})) {
-      if (declared.has(key) && value !== undefined && value !== null) {
-        query.append(key, String(value));
-      }
-    }
-    const queryString = query.toString();
-    const path = queryString
-      ? `${fm.fmcallUrl}${fm.fmcallUrl.includes('?') ? '&' : '?'}${queryString}`
-      : fm.fmcallUrl;
-
+    // The invoker owns the transport: whether this destination calls the ABAP fmcall
+    // service directly or posts to the CAP facade, and how each one's failures read.
     try {
-      const destination = await this.sapDestinationsService.findOneOrThrow(
+      const response = await this.fmInvokerService.invoke(
         organizationId,
-        fm.sapDestinationId,
+        fm,
+        call.arguments ?? {},
       );
-      const response = await this.sapDestinationsService.callSap(destination, path);
-      const body = this.stringifyBody(response.data);
       return {
         invocation: {
           toolName: call.name,
           fmName: fm.fmName,
           arguments: call.arguments,
           success: true,
-          statusCode: response.status ?? 200,
+          statusCode: response.status,
           durationMs: Date.now() - started,
           message: 'OK',
         },
-        content: body,
+        content: this.stringifyBody(response.data),
       };
     } catch (err) {
-      const status = this.statusFromError(err);
-      const detail = err instanceof Error ? err.message : 'Unknown error';
-      const redirectTarget = this.sapDestinationsService.redirectTargetFromError(err);
-      const message = redirectTarget
-        ? `SAP redirected this fmcall URL (HTTP ${status}) to "${redirectTarget}". Update the whitelisted URL to that exact path — redirects cannot be followed through the Cloud Connector proxy.`
-        : this.describeSapFailure(status, detail);
+      const status = err instanceof FmInvocationError ? err.status : null;
+      const message =
+        err instanceof Error ? err.message : 'The function module call failed for an unknown reason';
       this.logger.warn(`Tool "${call.name}" failed for org ${organizationId}: ${message}`);
       return {
         invocation: {
@@ -292,22 +303,6 @@ export class ChatService {
     }
   }
 
-  // Distinguishes failures at the tunnel from failures in SAP, so the answer doesn't
-  // blame SAP credentials for what is actually a BTP connectivity problem.
-  private describeSapFailure(status: number | null, detail: string): string {
-    switch (status) {
-      case 407:
-        return 'The BTP connectivity proxy rejected the call (HTTP 407, proxy authentication). The request never reached SAP — this is a Cloud Connector/connectivity binding problem, not the SAP user.';
-      case 401:
-      case 403:
-        return `SAP rejected the credentials for this destination (HTTP ${status}). Check SAP_USER/SAP_PWD and that user's authorization for this function module.`;
-      case 404:
-        return 'SAP returned HTTP 404 — the fmcall URL for this function module does not exist on that system.';
-      default:
-        return status ? `SAP returned HTTP ${status}` : `SAP call failed: ${detail}`;
-    }
-  }
-
   // SAP payloads can be far larger than the context window; truncate with a marker
   // so the model knows the data was cut rather than silently incomplete.
   private stringifyBody(data: unknown): string {
@@ -320,12 +315,5 @@ export class ChatService {
     if (!body) return '(empty response)';
     if (body.length <= this.maxToolResultChars) return body;
     return `${body.slice(0, this.maxToolResultChars)}\n\n[truncated: response was ${body.length} characters]`;
-  }
-
-  private statusFromError(err: unknown): number | null {
-    const direct = (err as { response?: { status?: number } })?.response?.status;
-    if (direct) return direct;
-    const cause = (err as { cause?: { response?: { status?: number } } })?.cause?.response?.status;
-    return cause ?? null;
   }
 }

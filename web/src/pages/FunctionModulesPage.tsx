@@ -7,6 +7,7 @@ import type {
   DiscoveredService,
   FunctionModule,
   FunctionModuleParam,
+  OverlapWarning,
   SapDestination,
 } from '../types';
 
@@ -28,6 +29,7 @@ export default function FunctionModulesPage() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [overlap, setOverlap] = useState<{ name: string; warnings: OverlapWarning[] } | null>(null);
 
   const [sapDestinationId, setSapDestinationId] = useState('');
   const [name, setName] = useState('');
@@ -42,9 +44,12 @@ export default function FunctionModulesPage() {
   const [discoveryFilter, setDiscoveryFilter] = useState('');
 
   const whitelistedPaths = useMemo(
-    () => new Set(functionModules.map((fm) => fm.fmcallUrl)),
+    () => new Set(functionModules.map((fm) => fm.fmcallUrl).filter((path) => path !== null)),
     [functionModules],
   );
+
+  const selectedDestinationIsCap =
+    destinations.find((d) => d.id === sapDestinationId)?.transport === 'cap_facade';
 
   const visibleDiscovered = useMemo(() => {
     if (!discovered) return [];
@@ -132,17 +137,21 @@ export default function FunctionModulesPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setOverlap(null);
     setSubmitting(true);
     try {
-      await adminApi.createFunctionModule({
+      const saved = await adminApi.createFunctionModule({
         sapDestinationId,
         name,
         description,
         fmName,
-        fmcallUrl,
+        ...(selectedDestinationIsCap ? {} : { fmcallUrl }),
         parameters,
       });
       resetForm();
+      if (saved.overlapWarnings.length > 0) {
+        setOverlap({ name: saved.name, warnings: saved.overlapWarnings });
+      }
       await load();
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Failed to create function module');
@@ -153,8 +162,14 @@ export default function FunctionModulesPage() {
 
   async function onToggleEnabled(fm: FunctionModule) {
     setError(null);
+    setOverlap(null);
     try {
-      await adminApi.updateFunctionModule(fm.id, { isEnabled: !fm.isEnabled });
+      const saved = await adminApi.updateFunctionModule(fm.id, { isEnabled: !fm.isEnabled });
+      // Only worth raising when the tool is being switched on — that's the point
+      // at which a duplicate description starts competing for the model's choice.
+      if (!fm.isEnabled && saved.overlapWarnings.length > 0) {
+        setOverlap({ name: saved.name, warnings: saved.overlapWarnings });
+      }
       await load();
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Failed to update function module');
@@ -192,6 +207,37 @@ export default function FunctionModulesPage() {
 
       {error && <div className="error-banner">{error}</div>}
 
+      {overlap && (
+        <div className="warning-banner">
+          <div className="warning-banner-head">
+            <span>
+              <strong className="mono">{overlap.name}</strong> reads almost the same as{' '}
+              {overlap.warnings.length === 1
+                ? 'another whitelisted tool'
+                : `${overlap.warnings.length} other whitelisted tools`}
+              . The chatbot chooses tools from these descriptions, so near-duplicates make the
+              choice arbitrary.
+            </span>
+            <button className="btn btn-sm" onClick={() => setOverlap(null)}>
+              Dismiss
+            </button>
+          </div>
+          <ul className="warning-list">
+            {overlap.warnings.map((warning) => (
+              <li key={warning.functionModuleId}>
+                <span className="mono">{warning.name}</span> · {warning.fmName} ·{' '}
+                {Math.round(warning.score * 100)}% similar
+                {!warning.isEnabled && ' · currently disabled'}
+              </li>
+            ))}
+          </ul>
+          <span>
+            Give each one a description that says what sets it apart — its scope, time range, or the
+            question it answers.
+          </span>
+        </div>
+      )}
+
       {destinations.length > 0 && (
         <div className="card">
           <h2>
@@ -222,7 +268,11 @@ export default function FunctionModulesPage() {
                 </option>
               ))}
             </select>
-            <button className="btn" onClick={onDiscover} disabled={discovering}>
+            <button
+              className="btn"
+              onClick={onDiscover}
+              disabled={discovering || selectedDestinationIsCap}
+            >
               {discovering ? 'Discovering…' : 'Discover services'}
             </button>
             {discovered && discovered.length > 0 && (
@@ -234,6 +284,13 @@ export default function FunctionModulesPage() {
               />
             )}
           </div>
+
+          {selectedDestinationIsCap && (
+            <p className="text-muted">
+              Discovery reads the SAP Gateway catalog directly, which a CAP facade destination has
+              no route to. Add its function modules manually below.
+            </p>
+          )}
 
           {discoveryMessage && <p className="text-muted">{discoveryMessage}</p>}
 
@@ -343,17 +400,24 @@ export default function FunctionModulesPage() {
                 required
               />
             </div>
-            <div className="field">
-              <label htmlFor="fmcallUrl">fmcall URL / path</label>
-              <input
-                id="fmcallUrl"
-                className="mono"
-                value={fmcallUrl}
-                onChange={(e) => setFmcallUrl(e.target.value)}
-                placeholder="/sap/bc/fmcall/BAPI_SALESORDER_GETLIST"
-                required
-              />
-            </div>
+            {selectedDestinationIsCap ? (
+              <p className="text-muted">
+                This destination reaches SAP through its CAP facade, which looks the function module
+                up by name — no fmcall URL is needed.
+              </p>
+            ) : (
+              <div className="field">
+                <label htmlFor="fmcallUrl">fmcall URL / path</label>
+                <input
+                  id="fmcallUrl"
+                  className="mono"
+                  value={fmcallUrl}
+                  onChange={(e) => setFmcallUrl(e.target.value)}
+                  placeholder="/sap/bc/fmcall/BAPI_SALESORDER_GETLIST"
+                  required
+                />
+              </div>
+            )}
             <div className="field">
               <label>Parameters</label>
               {parameters.map((param, i) => (

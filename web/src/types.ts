@@ -39,13 +39,23 @@ export interface CurrentUser {
   permissions: Permission[];
 }
 
+// 'direct_fmcall' calls the ABAP fmcall service through the Cloud Connector with a
+// backend SAP user. 'cap_facade' posts to a generic CAP service that does the fmcall
+// on our behalf, authenticated with XSUAA client credentials.
+export type DestinationTransport = 'direct_fmcall' | 'cap_facade';
+
 export interface SapDestination {
   id: string;
   organizationId: string;
   name: string;
   description: string | null;
+  transport: DestinationTransport;
   url: string;
   cloudConnectorLocationId: string | null;
+  capExecutePath: string | null;
+  capTokenUrl: string | null;
+  // The client secret is never returned by the API.
+  capClientId: string | null;
   isActive: boolean;
   createdByUserId: string;
   createdAt: string;
@@ -66,11 +76,27 @@ export interface FunctionModule {
   name: string;
   description: string;
   fmName: string;
-  fmcallUrl: string;
+  // Null for modules behind a CAP facade, which are addressed by fmName alone.
+  fmcallUrl: string | null;
   parameters: FunctionModuleParam[];
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+// Another whitelist entry that reads so similarly to the one just saved that the
+// model has no reliable basis for choosing between them.
+export interface OverlapWarning {
+  functionModuleId: string;
+  name: string;
+  fmName: string;
+  isEnabled: boolean;
+  // Cosine similarity of the two tool descriptions, 0–1.
+  score: number;
+}
+
+export interface SavedFunctionModule extends FunctionModule {
+  overlapWarnings: OverlapWarning[];
 }
 
 export interface DiscoveredService {
@@ -105,6 +131,8 @@ export interface ChatTurnResult {
   model: string;
   toolInvocations: ChatToolInvocation[];
   availableToolCount: number;
+  // The subset of the whitelist actually offered to the model for this question.
+  advertisedToolCount: number;
 }
 
 export interface LlmProviderInfo {

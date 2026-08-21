@@ -1,11 +1,13 @@
 import { apiClient } from './client';
 import type {
+  DestinationTransport,
   DiscoveryResult,
   FunctionModule,
   FunctionModuleParam,
   Permission,
   Role,
   SapDestination,
+  SavedFunctionModule,
   User,
 } from '../types';
 
@@ -41,23 +43,35 @@ export const deleteUser = (id: string) => apiClient.delete(`/admin/users/${id}`)
 // SAP Destinations
 export const listSapDestinations = () =>
   apiClient.get<SapDestination[]>('/admin/sap-destinations').then((r) => r.data);
+// sapUser/sapPassword apply to 'direct_fmcall'; the cap* fields to 'cap_facade'.
+// The server rejects a destination that is missing what its transport needs.
 export const createSapDestination = (payload: {
   name: string;
   description?: string;
+  transport?: DestinationTransport;
   url: string;
   cloudConnectorLocationId?: string;
-  sapUser: string;
-  sapPassword: string;
+  sapUser?: string;
+  sapPassword?: string;
+  capExecutePath?: string;
+  capTokenUrl?: string;
+  capClientId?: string;
+  capClientSecret?: string;
 }) => apiClient.post<SapDestination>('/admin/sap-destinations', payload).then((r) => r.data);
 export const updateSapDestination = (
   id: string,
   payload: Partial<{
     name: string;
     description: string;
+    transport: DestinationTransport;
     url: string;
     cloudConnectorLocationId: string;
     sapUser: string;
     sapPassword: string;
+    capExecutePath: string;
+    capTokenUrl: string;
+    capClientId: string;
+    capClientSecret: string;
     isActive: boolean;
   }>,
 ) => apiClient.patch<SapDestination>(`/admin/sap-destinations/${id}`, payload).then((r) => r.data);
@@ -79,10 +93,11 @@ export const createFunctionModule = (payload: {
   name: string;
   description: string;
   fmName: string;
-  fmcallUrl: string;
+  // Omitted for CAP-backed destinations, which address the FM by name.
+  fmcallUrl?: string;
   parameters: FunctionModuleParam[];
   isEnabled?: boolean;
-}) => apiClient.post<FunctionModule>('/admin/function-modules', payload).then((r) => r.data);
+}) => apiClient.post<SavedFunctionModule>('/admin/function-modules', payload).then((r) => r.data);
 export const updateFunctionModule = (
   id: string,
   payload: Partial<{
@@ -94,7 +109,10 @@ export const updateFunctionModule = (
     parameters: FunctionModuleParam[];
     isEnabled: boolean;
   }>,
-) => apiClient.patch<FunctionModule>(`/admin/function-modules/${id}`, payload).then((r) => r.data);
+) =>
+  apiClient
+    .patch<SavedFunctionModule>(`/admin/function-modules/${id}`, payload)
+    .then((r) => r.data);
 export const deleteFunctionModule = (id: string) =>
   apiClient.delete(`/admin/function-modules/${id}`);
 export const discoverServices = (sapDestinationId: string) =>

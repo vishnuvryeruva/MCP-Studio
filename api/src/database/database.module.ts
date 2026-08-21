@@ -6,6 +6,7 @@ import { User } from '../models/user.model';
 import { Role } from '../models/role.model';
 import { SapDestination } from '../models/sap-destination.model';
 import { FunctionModule } from '../models/function-module.model';
+import { FunctionModuleEmbedding } from '../models/function-module-embedding.model';
 import { resolveDatabaseConnection, getDatabaseSchema } from './database.config';
 
 @Module({
@@ -20,7 +21,14 @@ import { resolveDatabaseConnection, getDatabaseSchema } from './database.config'
           // On Cloud Foundry this comes from the bound postgresql-db service (with SSL);
           // locally it falls back to the DB_* env vars.
           ...resolveDatabaseConnection(config),
-          models: [Organization, User, Role, SapDestination, FunctionModule],
+          models: [
+            Organization,
+            User,
+            Role,
+            SapDestination,
+            FunctionModule,
+            FunctionModuleEmbedding,
+          ],
           autoLoadModels: true,
           synchronize: true,
           logging: false,

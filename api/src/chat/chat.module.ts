@@ -5,6 +5,7 @@ import { User } from '../models/user.model';
 import { AuthModule } from '../auth/auth.module';
 import { AdminModule } from '../admin/admin.module';
 import { LlmModule } from '../llm/llm.module';
+import { ToolIndexModule } from '../tool-index/tool-index.module';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 
@@ -16,6 +17,8 @@ import { ChatService } from './chat.service';
     // Cloud Connector path (and credential decryption) as Test Connection.
     AdminModule,
     LlmModule,
+    // Picks which of the whitelisted tools are worth advertising per question.
+    ToolIndexModule,
   ],
   controllers: [ChatController],
   providers: [ChatService],

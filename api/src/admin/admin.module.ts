@@ -5,6 +5,7 @@ import { Role } from '../models/role.model';
 import { SapDestination } from '../models/sap-destination.model';
 import { FunctionModule as FunctionModuleModel } from '../models/function-module.model';
 import { AuthModule } from '../auth/auth.module';
+import { ToolIndexModule } from '../tool-index/tool-index.module';
 import { RolesController } from './controllers/roles.controller';
 import { UsersController } from './controllers/users.controller';
 import { SapDestinationsController } from './controllers/sap-destinations.controller';
@@ -14,11 +15,15 @@ import { UsersService } from './services/users.service';
 import { SapDestinationsService } from './services/sap-destinations.service';
 import { FunctionModulesService } from './services/function-modules.service';
 import { ServiceDiscoveryService } from './services/service-discovery.service';
+import { CapFacadeService } from './services/cap-facade.service';
+import { FmInvokerService } from './services/fm-invoker.service';
 
 @Module({
   imports: [
     SequelizeModule.forFeature([User, Role, SapDestination, FunctionModuleModel]),
     AuthModule,
+    // Flags near-duplicate tool descriptions when a module is saved.
+    ToolIndexModule,
   ],
   controllers: [
     RolesController,
@@ -32,9 +37,11 @@ import { ServiceDiscoveryService } from './services/service-discovery.service';
     SapDestinationsService,
     FunctionModulesService,
     ServiceDiscoveryService,
+    CapFacadeService,
+    FmInvokerService,
   ],
-  // Chat reuses the SAP caller so fmcall invocations go through the same
-  // Cloud Connector routing and credential decryption as the admin screens.
-  exports: [SapDestinationsService],
+  // Chat runs function modules through the invoker so both transports share the
+  // same routing, credential decryption, and failure wording as the admin screens.
+  exports: [FmInvokerService],
 })
 export class AdminModule {}
