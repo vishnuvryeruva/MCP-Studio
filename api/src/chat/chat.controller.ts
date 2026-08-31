@@ -1,4 +1,15 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/interfaces/jwt-payload.interface';
@@ -26,14 +37,42 @@ export class ChatController {
     return this.chatService.listAvailableTools(user.organizationId);
   }
 
+  @Get('threads')
+  listThreads(@CurrentUser() user: AuthenticatedUser) {
+    return this.chatService.listThreads(user.userId, user.organizationId);
+  }
+
+  @Get('threads/:threadId')
+  getThread(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('threadId', new ParseUUIDPipe({ version: '4' })) threadId: string,
+  ) {
+    return this.chatService.getThread(threadId, user.userId, user.organizationId);
+  }
+
+  @Post('threads')
+  @HttpCode(HttpStatus.CREATED)
+  createThread(@CurrentUser() user: AuthenticatedUser) {
+    return this.chatService.createThread(user.userId, user.organizationId);
+  }
+
+  @Delete('threads/:threadId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteThread(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('threadId', new ParseUUIDPipe({ version: '4' })) threadId: string,
+  ) {
+    await this.chatService.deleteThread(threadId, user.userId, user.organizationId);
+  }
+
   @Post('message')
   @HttpCode(HttpStatus.OK)
   message(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChatMessageDto) {
     return this.chatService.handleTurn({
       userId: user.userId,
       organizationId: user.organizationId,
+      threadId: dto.threadId,
       message: dto.message,
-      history: dto.history ?? [],
     });
   }
 }

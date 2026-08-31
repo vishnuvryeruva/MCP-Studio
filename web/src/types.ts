@@ -100,11 +100,34 @@ export interface ChatToolInvocation {
 }
 
 export interface ChatTurnResult {
+  threadId: string;
+  threadTitle: string;
   reply: string;
   provider: string;
   model: string;
   toolInvocations: ChatToolInvocation[];
   availableToolCount: number;
+}
+
+export interface ChatThreadSummary {
+  id: string;
+  title: string;
+  lastMessageAt: string;
+  createdAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  toolInvocations?: ChatToolInvocation[];
+  failed: boolean;
+  answeredWithoutSap: boolean;
+  createdAt: string;
+}
+
+export interface ChatThreadDetail extends ChatThreadSummary {
+  messages: ChatMessage[];
 }
 
 export interface LlmProviderInfo {

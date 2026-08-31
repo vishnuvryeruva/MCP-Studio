@@ -439,6 +439,51 @@ tr:last-child td {
 }
 
 /* Chat */
+.chat-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 16px;
+}
+
+.chat-threads-card {
+  height: calc(100vh - 200px);
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.chat-thread-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.chat-thread-item-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.chat-thread-open {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  flex: 1;
+  font-size: 13px;
+}
+
 .chat-card {
   display: flex;
   flex-direction: column;
