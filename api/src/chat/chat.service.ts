@@ -212,18 +212,6 @@ export class ChatService {
     // is safe — and it rescues the turn when the shortlist guessed wrong.
     const byToolName = new Map(functionModules.map((fm) => [fm.name, fm]));
 
-    const selection = await this.toolIndexService.selectForQuestion(
-      functionModules,
-      input.message,
-      input.history,
-    );
-    const tools = selection.modules.map((fm) => this.toToolDefinition(fm));
-    if (selection.narrowed) {
-      this.logger.log(
-        `Advertising ${tools.length}/${functionModules.length} tools for org ${input.organizationId}: ${selection.reason}`,
-      );
-    }
-
     const user = await this.userModel.findByPk(input.userId);
     const provider = this.llmService.resolve(user?.llmProvider);
     const thread = input.threadId
@@ -243,6 +231,21 @@ export class ChatService {
     const previousTurns = persistedHistory.filter(
       (message) => !message.failed && (message.role === 'user' || message.role === 'assistant'),
     );
+
+    // Follow-up questions ("and last quarter?") need prior user turns in the
+    // embedding query; history lives on the thread, not on ChatTurnInput.
+    const selection = await this.toolIndexService.selectForQuestion(
+      functionModules,
+      input.message,
+      previousTurns.map((turn) => ({ role: turn.role, content: turn.content })),
+    );
+    const tools = selection.modules.map((fm) => this.toToolDefinition(fm));
+    if (selection.narrowed) {
+      this.logger.log(
+        `Advertising ${tools.length}/${functionModules.length} tools for org ${input.organizationId}: ${selection.reason}`,
+      );
+    }
+
     const messages: LlmMessage[] = [
       ...previousTurns.map((turn) => ({ role: turn.role, content: turn.content }) as LlmMessage),
       { role: 'user', content: input.message },
