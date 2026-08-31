@@ -46,5 +46,31 @@ export default () => ({
       apiKey: process.env.GEMINI_API_KEY ?? '',
       model: process.env.GEMINI_MODEL ?? 'gemini-2.5-pro',
     },
+    // Anthropic has no embeddings API, so this is chosen independently of
+    // `provider` above: an org can run Anthropic for chat and OpenAI for
+    // embeddings. Keys are reused from the vendor blocks above.
+    embedding: {
+      provider: process.env.EMBEDDING_PROVIDER ?? 'openai',
+      openaiModel: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
+      geminiModel: process.env.GEMINI_EMBEDDING_MODEL ?? 'gemini-embedding-001',
+    },
+    // Controls which whitelisted function modules get advertised to the model
+    // for a given question. Every setting here is a safety/cost trade-off:
+    // advertising too many wastes tokens, too few makes answerable questions
+    // unanswerable, so the defaults lean towards advertising more.
+    toolSelection: {
+      enabled: (process.env.LLM_TOOL_SELECTION ?? 'true').toLowerCase() !== 'false',
+      // Whitelists this size or smaller skip embedding entirely and send everything.
+      sendAllBelow: parseInt(process.env.LLM_TOOL_SELECTION_SEND_ALL_BELOW ?? '8', 10),
+      topK: parseInt(process.env.LLM_TOOL_SELECTION_TOP_K ?? '10', 10),
+      // Cosine floor for a tool to count as relevant to the question.
+      minScore: parseFloat(process.env.LLM_TOOL_SELECTION_MIN_SCORE ?? '0.2'),
+      // Advertised even when nothing clears minScore, so a turn is never toolless.
+      minTools: parseInt(process.env.LLM_TOOL_SELECTION_MIN_TOOLS ?? '3', 10),
+      // Prior user turns folded into the query so follow-ups still match.
+      historyTurns: parseInt(process.env.LLM_TOOL_SELECTION_HISTORY_TURNS ?? '2', 10),
+      // Similarity at which two whitelist entries are flagged as confusable.
+      overlapThreshold: parseFloat(process.env.LLM_OVERLAP_WARN_SCORE ?? '0.9'),
+    },
   },
 });

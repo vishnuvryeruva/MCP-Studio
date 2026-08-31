@@ -16,6 +16,8 @@
   --danger: #d64545;
   --danger-hover: #b93838;
   --success: #2f9e6b;
+  --warning: #8a5a00;
+  --warning-border: #d9a52b;
   --radius: 12px;
   --shadow-sm: 0 1px 3px rgba(29, 62, 68, 0.06);
   --shadow-md: 0 4px 16px rgba(29, 62, 68, 0.08);
@@ -177,6 +179,33 @@ button {
   border-radius: 6px;
   font-size: 13px;
   margin-bottom: 16px;
+}
+
+/* Advisory, not a failure: the save succeeded but needs the admin's attention. */
+.warning-banner {
+  background: rgba(217, 165, 43, 0.12);
+  border: 1px solid var(--warning-border);
+  color: var(--warning);
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.55;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.warning-banner-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.warning-list {
+  margin: 0;
+  padding-left: 20px;
 }
 
 .auth-footer {

@@ -29,10 +29,13 @@ export class CreateFunctionModuleDto {
   @MinLength(1)
   fmName: string;
 
-  // fmcall URL/path to invoke on the SAP destination
+  // fmcall URL/path to invoke on the SAP destination. Required for 'direct_fmcall'
+  // destinations and rejected for CAP-backed ones, which address the FM by name —
+  // enforced in the service, where the destination's transport is known.
+  @IsOptional()
   @IsString()
   @MinLength(1)
-  fmcallUrl: string;
+  fmcallUrl?: string;
 
   @IsArray()
   @ValidateNested({ each: true })

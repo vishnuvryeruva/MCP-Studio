@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { ConfigService } from '@nestjs/config';
 import { executeHttpRequest } from '@sap-cloud-sdk/http-client';
@@ -8,9 +8,12 @@ import type { HttpDestination } from '@sap-cloud-sdk/connectivity';
 import { timeout } from '@sap-cloud-sdk/resilience';
 import { isAxiosError } from 'axios';
 import { SapDestination } from '../../models/sap-destination.model';
+import type { DestinationTransport } from '../../models/sap-destination.model';
 import { EncryptionService } from '../../common/services/encryption.service';
 import { CreateSapDestinationDto } from '../dto/create-sap-destination.dto';
 import { UpdateSapDestinationDto } from '../dto/update-sap-destination.dto';
+import { CapFacadeService } from './cap-facade.service';
+import { FmInvocationError } from './fm-invocation.types';
 
 export interface TestConnectionResult {
   success: boolean;
@@ -20,6 +23,7 @@ export interface TestConnectionResult {
 }
 
 const REQUEST_TIMEOUT_MS = 10_000;
+const DEFAULT_CAP_EXECUTE_PATH = '/integration/execute';
 
 @Injectable()
 export class SapDestinationsService {
@@ -30,6 +34,7 @@ export class SapDestinationsService {
     private readonly sapDestinationModel: typeof SapDestination,
     private readonly encryptionService: EncryptionService,
     private readonly configService: ConfigService,
+    private readonly capFacadeService: CapFacadeService,
   ) {}
 
   async findAll(organizationId: string) {
@@ -54,14 +59,25 @@ export class SapDestinationsService {
   }
 
   async create(organizationId: string, userId: string, dto: CreateSapDestinationDto) {
+    const transport: DestinationTransport = dto.transport ?? 'direct_fmcall';
+    const isCap = transport === 'cap_facade';
     const destination = await this.sapDestinationModel.create({
       organizationId,
       name: dto.name,
       description: dto.description ?? null,
+      transport,
       url: dto.url,
-      cloudConnectorLocationId: dto.cloudConnectorLocationId ?? null,
-      encryptedSapUser: this.encryptionService.encrypt(dto.sapUser),
-      encryptedSapPassword: this.encryptionService.encrypt(dto.sapPassword),
+      // Fields belonging to the other transport are stored as null rather than kept
+      // around, so a destination can never present two sets of credentials.
+      cloudConnectorLocationId: isCap ? null : (dto.cloudConnectorLocationId ?? null),
+      encryptedSapUser: isCap ? null : this.encryptionService.encrypt(dto.sapUser!),
+      encryptedSapPassword: isCap ? null : this.encryptionService.encrypt(dto.sapPassword!),
+      capExecutePath: isCap ? (dto.capExecutePath?.trim() || DEFAULT_CAP_EXECUTE_PATH) : null,
+      capTokenUrl: isCap ? dto.capTokenUrl! : null,
+      capClientId: isCap ? dto.capClientId! : null,
+      encryptedCapClientSecret: isCap
+        ? this.encryptionService.encrypt(dto.capClientSecret!)
+        : null,
       createdByUserId: userId,
       isActive: true,
     });
@@ -70,28 +86,94 @@ export class SapDestinationsService {
 
   async update(organizationId: string, id: string, dto: UpdateSapDestinationDto) {
     const destination = await this.findOneOrThrow(organizationId, id);
-    const { sapUser, sapPassword, ...rest } = dto;
+    const { sapUser, sapPassword, capClientSecret, transport, ...rest } = dto;
+    const effectiveTransport = transport ?? destination.transport;
+
+    const patch: Record<string, unknown> = { ...rest, transport: effectiveTransport };
+
+    // Changing transport discards the settings the old one used, so a destination
+    // never keeps two sets of credentials — one of which nothing would ever verify.
+    if (transport && transport !== destination.transport) {
+      Object.assign(
+        patch,
+        effectiveTransport === 'cap_facade'
+          ? { encryptedSapUser: null, encryptedSapPassword: null, cloudConnectorLocationId: null }
+          : {
+              capExecutePath: null,
+              capTokenUrl: null,
+              capClientId: null,
+              encryptedCapClientSecret: null,
+            },
+      );
+    }
+
+    // Credentials are write-only over the API — only replace them when the
+    // client sends a non-empty value (edit forms leave these fields blank).
     const trimmedUser = sapUser?.trim();
     const trimmedPassword = sapPassword?.trim();
-    await destination.update({
-      ...rest,
-      // Credentials are write-only over the API — only replace them when the
-      // client sends a non-empty value (edit forms leave these fields blank).
-      ...(trimmedUser ? { encryptedSapUser: this.encryptionService.encrypt(trimmedUser) } : {}),
-      ...(trimmedPassword
-        ? { encryptedSapPassword: this.encryptionService.encrypt(trimmedPassword) }
-        : {}),
-    });
+    const trimmedSecret = capClientSecret?.trim();
+    if (trimmedUser) patch.encryptedSapUser = this.encryptionService.encrypt(trimmedUser);
+    if (trimmedPassword) {
+      patch.encryptedSapPassword = this.encryptionService.encrypt(trimmedPassword);
+    }
+    if (trimmedSecret) {
+      patch.encryptedCapClientSecret = this.encryptionService.encrypt(trimmedSecret);
+    }
+    if (effectiveTransport === 'cap_facade' && !patch.capExecutePath) {
+      patch.capExecutePath = rest.capExecutePath ?? destination.capExecutePath ?? DEFAULT_CAP_EXECUTE_PATH;
+    }
+
+    // Switching transport (or filling in a missing field) must not leave a
+    // destination that passes validation field-by-field but can't actually connect.
+    this.assertTransportUsable(effectiveTransport, {
+      ...destination.get({ plain: true }),
+      ...patch,
+    } as Partial<SapDestination>);
+
+    await destination.update(patch);
+    // The XSUAA client may have changed; a token minted for the old one must not be reused.
+    this.capFacadeService.invalidate(destination.id);
     return this.toSafeResponse(destination);
+  }
+
+  private assertTransportUsable(
+    transport: DestinationTransport,
+    merged: Partial<SapDestination>,
+  ): void {
+    const missing: string[] = [];
+    if (transport === 'cap_facade') {
+      if (!merged.capTokenUrl) missing.push('XSUAA token URL');
+      if (!merged.capClientId) missing.push('client ID');
+      if (!merged.encryptedCapClientSecret) missing.push('client secret');
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          `A CAP facade destination needs its ${missing.join(', ')}. Provide them with this change.`,
+        );
+      }
+      return;
+    }
+    if (!merged.encryptedSapUser) missing.push('SAP_USER');
+    if (!merged.encryptedSapPassword) missing.push('SAP_PWD');
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `A direct fmcall destination needs its ${missing.join(', ')}. Provide them with this change.`,
+      );
+    }
   }
 
   async remove(organizationId: string, id: string) {
     const destination = await this.findOneOrThrow(organizationId, id);
     await destination.destroy();
+    this.capFacadeService.invalidate(id);
   }
 
   // Decrypted credentials should only ever be read by the internal fmcall invoker, never returned over the API.
   decryptCredentials(destination: SapDestination) {
+    if (!destination.encryptedSapUser || !destination.encryptedSapPassword) {
+      throw new BadRequestException(
+        `Destination "${destination.name}" has no stored SAP credentials — it reaches SAP through the CAP facade.`,
+      );
+    }
     return {
       sapUser: this.encryptionService.decrypt(destination.encryptedSapUser),
       sapPassword: this.encryptionService.decrypt(destination.encryptedSapPassword),
@@ -230,6 +312,9 @@ export class SapDestinationsService {
     path?: string,
   ): Promise<TestConnectionResult> {
     const destination = await this.findOneOrThrow(organizationId, id);
+    if (destination.transport === 'cap_facade') {
+      return this.testCapConnection(destination, path);
+    }
 
     const start = Date.now();
     try {
@@ -269,6 +354,37 @@ export class SapDestinationsService {
         statusCode: null,
         durationMs,
         message: `Could not reach SAP system (${this.detailFromError(err)})`,
+      };
+    }
+  }
+
+  // The CAP equivalent: prove the XSUAA client credentials are accepted and the CAP
+  // service answers, without executing a function module against the backend. `path`
+  // overrides the metadata path that is otherwise derived from the execute path.
+  private async testCapConnection(
+    destination: SapDestination,
+    path?: string,
+  ): Promise<TestConnectionResult> {
+    const start = Date.now();
+    try {
+      const response = await this.capFacadeService.probe(destination, path);
+      return {
+        success: true,
+        statusCode: response.status,
+        durationMs: Date.now() - start,
+        message: 'Obtained an XSUAA token and the CAP service responded',
+      };
+    } catch (err) {
+      this.logger.error(
+        `CAP facade test failed for destination ${destination.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return {
+        success: false,
+        statusCode: err instanceof FmInvocationError ? err.status : null,
+        durationMs: Date.now() - start,
+        message: err instanceof Error ? err.message : 'CAP facade test failed',
       };
     }
   }
@@ -330,8 +446,14 @@ export class SapDestinationsService {
       organizationId: destination.organizationId,
       name: destination.name,
       description: destination.description,
+      transport: destination.transport,
       url: destination.url,
       cloudConnectorLocationId: destination.cloudConnectorLocationId,
+      capExecutePath: destination.capExecutePath,
+      capTokenUrl: destination.capTokenUrl,
+      // The client ID is not a secret and knowing it makes a misconfiguration
+      // obvious; the client secret is never returned.
+      capClientId: destination.capClientId,
       isActive: destination.isActive,
       createdByUserId: destination.createdByUserId,
       createdAt: destination.get('createdAt'),

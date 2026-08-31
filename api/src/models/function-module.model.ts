@@ -56,9 +56,11 @@ export class FunctionModule extends Model {
   @Column({ type: DataType.STRING, allowNull: false })
   declare fmName: string;
 
-  // Path/URL appended to the destination base URL to invoke the FM
-  @Column({ type: DataType.STRING, allowNull: false })
-  declare fmcallUrl: string;
+  // Path/URL appended to the destination base URL to invoke the FM. Only used by
+  // 'direct_fmcall' destinations; a CAP facade is addressed by fmName alone, so this
+  // is null for modules behind one.
+  @Column({ type: DataType.STRING, allowNull: true })
+  declare fmcallUrl: string | null;
 
   @Column({ type: DataType.JSONB, allowNull: false, defaultValue: [] })
   declare parameters: FunctionModuleParam[];
