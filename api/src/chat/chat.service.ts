@@ -5,6 +5,7 @@ import { FunctionModule } from '../models/function-module.model';
 import { User } from '../models/user.model';
 import { ChatThread } from '../models/chat-thread.model';
 import { ChatMessage } from '../models/chat-message.model';
+import { SapDestination } from '../models/sap-destination.model';
 import { SapDestinationsService } from '../admin/services/sap-destinations.service';
 import { FmInvokerService } from '../admin/services/fm-invoker.service';
 import { FmInvocationError } from '../admin/services/fm-invocation.types';
@@ -20,6 +21,7 @@ export interface ChatTurnInput {
   userId: string;
   organizationId: string;
   threadId?: string;
+  sapDestinationId: string;
   message: string;
 }
 
@@ -51,6 +53,7 @@ export interface ChatTurnResult {
 export interface ChatThreadSummary {
   id: string;
   title: string;
+  sapDestinationId: string | null;
   lastMessageAt: Date;
   createdAt: Date;
 }
@@ -94,6 +97,63 @@ Reporting:
 - Lead with the answer, then brief supporting detail. Use prose or a small table.
   Do not dump raw JSON at the user.`;
 
+// Used when the selected destination is an XSUAA/CAP application: there is no
+// per-module whitelist, so the model names the function module itself.
+const SYSTEM_PROMPT_CAP = `You are an assistant that answers questions about a company's SAP data.
+
+You have one tool, execute_sap_function_module, which calls SAP function modules through
+a CAP service authenticated with XSUAA. There is no separate whitelist — any function
+module the CAP service permits can be called.
+
+Grounding — this is the most important rule:
+- Every figure, identifier, amount, date, and count in your answer must come from a tool
+  result in this conversation. You have no SAP data until a tool returns it.
+- If you have not called a tool, you cannot state a number. Call the tool instead.
+- Never estimate, extrapolate, or fill in a plausible-looking value. If the data isn't in
+  a tool result, say what you don't have.
+
+Calling tools:
+- When the user's question needs SAP data, call execute_sap_function_module immediately.
+- Set functionModule to the SAP function module name (for example BAPI_SALESORDER_GETLIST).
+- Put import parameters in "parameters" using the names SAP expects (for example
+  customer_number, sales_organization). Use the values the user gave; do not ask them
+  to confirm what they just told you.
+- If you are unsure of the exact function module name, pick the standard BAPI/RFC that
+  matches the request and say which one you called.
+- Only ask a clarifying question when a required parameter is genuinely missing and you
+  cannot reasonably infer it.
+- If a call can answer part of the question, make it and answer that part, rather than
+  declining the whole question.
+
+Reporting:
+- If a tool returns an error, say plainly what failed. Do not substitute invented data.
+- Lead with the answer, then brief supporting detail. Use prose or a small table.
+  Do not dump raw JSON at the user.`;
+
+const CAP_EXECUTE_TOOL_NAME = 'execute_sap_function_module';
+
+const CAP_EXECUTE_TOOL: LlmToolDefinition = {
+  name: CAP_EXECUTE_TOOL_NAME,
+  description:
+    'Call a SAP function module by name through the selected XSUAA application. ' +
+    'Use this whenever the question needs live SAP data.',
+  parameters: {
+    type: 'object',
+    properties: {
+      functionModule: {
+        type: 'string',
+        description: 'SAP function module name, e.g. BAPI_SALESORDER_GETLIST',
+      },
+      parameters: {
+        type: 'object',
+        description:
+          'Import parameters as a JSON object, e.g. {"customer_number":"BP-CUST","sales_organization":"1010"}',
+      },
+    },
+    required: ['functionModule'],
+  },
+};
+
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
@@ -127,6 +187,7 @@ export class ChatService {
     return threads.map((thread) => ({
       id: thread.id,
       title: thread.title,
+      sapDestinationId: thread.sapDestinationId,
       lastMessageAt: thread.lastMessageAt,
       createdAt: thread.createdAt,
     }));
@@ -141,6 +202,7 @@ export class ChatService {
     return {
       id: thread.id,
       title: thread.title,
+      sapDestinationId: thread.sapDestinationId,
       createdAt: thread.createdAt,
       lastMessageAt: thread.lastMessageAt,
       messages: messages.map((message) => ({
@@ -166,6 +228,7 @@ export class ChatService {
     return {
       id: thread.id,
       title: thread.title,
+      sapDestinationId: thread.sapDestinationId,
       createdAt: thread.createdAt,
       lastMessageAt: thread.lastMessageAt,
     };
@@ -177,12 +240,44 @@ export class ChatService {
     await thread.destroy();
   }
 
-  // Powers the chat empty state: what this organization can actually ask about.
+  async listDestinations(organizationId: string): Promise<
+    {
+      id: string;
+      name: string;
+      description: string | null;
+      transport: string;
+    }[]
+  > {
+    const destinations = await this.sapDestinationsService.findAll(organizationId);
+    return destinations
+      .filter((destination) => destination.isActive)
+      .map((destination) => ({
+        id: destination.id,
+        name: destination.name,
+        description: destination.description,
+        transport: destination.transport,
+      }));
+  }
+
+  // Powers the chat empty state. Cloud Connector destinations list their
+  // whitelist; XSUAA destinations advertise the generic execute tool instead.
   async listAvailableTools(
     organizationId: string,
+    sapDestinationId?: string,
   ): Promise<{ name: string; description: string; fmName: string }[]> {
+    if (!sapDestinationId) return [];
+    const destination = await this.requireActiveDestination(organizationId, sapDestinationId);
+    if (destination.transport === 'cap_facade') {
+      return [
+        {
+          name: CAP_EXECUTE_TOOL.name,
+          description: CAP_EXECUTE_TOOL.description,
+          fmName: '*',
+        },
+      ];
+    }
     const functionModules = await this.functionModuleModel.findAll({
-      where: { organizationId, isEnabled: true },
+      where: { organizationId, isEnabled: true, sapDestinationId },
     });
     return functionModules.map((fm) => ({
       name: fm.name,
@@ -192,17 +287,27 @@ export class ChatService {
   }
 
   async handleTurn(input: ChatTurnInput): Promise<ChatTurnResult> {
-    // Only enabled, org-owned function modules are ever exposed as tools.
-    const functionModules = await this.functionModuleModel.findAll({
-      where: { organizationId: input.organizationId, isEnabled: true },
-    });
+    const destination = await this.requireActiveDestination(
+      input.organizationId,
+      input.sapDestinationId,
+    );
+    const isCap = destination.transport === 'cap_facade';
 
-    // With no tools there is no SAP data to ground an answer in. Calling the model
-    // anyway invites it to narrate a plausible-sounding result (and even a fake tool
-    // error), so fail loudly instead of returning something that looks like data.
-    if (functionModules.length === 0) {
+    // Cloud Connector destinations can only run FMs the admin whitelisted.
+    // XSUAA/CAP destinations skip that list — the CAP service is the gate.
+    const functionModules = isCap
+      ? []
+      : await this.functionModuleModel.findAll({
+          where: {
+            organizationId: input.organizationId,
+            sapDestinationId: destination.id,
+            isEnabled: true,
+          },
+        });
+
+    if (!isCap && functionModules.length === 0) {
       throw new UnprocessableEntityException(
-        'No SAP function modules are whitelisted for this organization, so there is no data to query. Whitelist a function module first.',
+        `No SAP function modules are whitelisted for "${destination.name}", so there is no data to query. Whitelist a function module on that destination first.`,
       );
     }
 
@@ -219,6 +324,7 @@ export class ChatService {
       : await this.chatThreadModel.create({
           userId: input.userId,
           organizationId: input.organizationId,
+          sapDestinationId: destination.id,
           title: 'New chat',
           titleAutoGenerated: true,
           lastMessageAt: new Date(),
@@ -232,18 +338,23 @@ export class ChatService {
       (message) => !message.failed && (message.role === 'user' || message.role === 'assistant'),
     );
 
-    // Follow-up questions ("and last quarter?") need prior user turns in the
-    // embedding query; history lives on the thread, not on ChatTurnInput.
-    const selection = await this.toolIndexService.selectForQuestion(
-      functionModules,
-      input.message,
-      previousTurns.map((turn) => ({ role: turn.role, content: turn.content })),
-    );
-    const tools = selection.modules.map((fm) => this.toToolDefinition(fm));
-    if (selection.narrowed) {
-      this.logger.log(
-        `Advertising ${tools.length}/${functionModules.length} tools for org ${input.organizationId}: ${selection.reason}`,
+    let tools: LlmToolDefinition[];
+    if (isCap) {
+      tools = [CAP_EXECUTE_TOOL];
+    } else {
+      // Follow-up questions ("and last quarter?") need prior user turns in the
+      // embedding query; history lives on the thread, not on ChatTurnInput.
+      const selection = await this.toolIndexService.selectForQuestion(
+        functionModules,
+        input.message,
+        previousTurns.map((turn) => ({ role: turn.role, content: turn.content })),
       );
+      tools = selection.modules.map((fm) => this.toToolDefinition(fm));
+      if (selection.narrowed) {
+        this.logger.log(
+          `Advertising ${tools.length}/${functionModules.length} tools for org ${input.organizationId}: ${selection.reason}`,
+        );
+      }
     }
 
     const messages: LlmMessage[] = [
@@ -265,7 +376,7 @@ export class ChatService {
 
     for (let iteration = 0; iteration < this.maxIterations; iteration++) {
       const response = await this.llmService.complete({
-        system: SYSTEM_PROMPT,
+        system: isCap ? SYSTEM_PROMPT_CAP : SYSTEM_PROMPT,
         messages,
         tools,
       });
@@ -290,7 +401,9 @@ export class ChatService {
 
       // The model only proposes calls; the backend is what actually invokes SAP.
       for (const call of response.toolCalls) {
-        const outcome = await this.executeToolCall(input.organizationId, call, byToolName);
+        const outcome = isCap
+          ? await this.executeCapToolCall(destination, call)
+          : await this.executeToolCall(input.organizationId, call, byToolName);
         toolInvocations.push(outcome.invocation);
         messages.push({
           role: 'tool',
@@ -316,7 +429,7 @@ export class ChatService {
       answeredWithoutSap: toolInvocations.length === 0,
       toolInvocations,
     });
-    await thread.update({ lastMessageAt: new Date() });
+    await thread.update({ lastMessageAt: new Date(), sapDestinationId: destination.id });
     const maybeRetitled = await this.ensureThreadTitle(thread, input.message, finalReply, provider.name);
 
     return {
@@ -326,7 +439,7 @@ export class ChatService {
       provider: provider.name,
       model: provider.model,
       toolInvocations,
-      availableToolCount: functionModules.length,
+      availableToolCount: isCap ? 1 : functionModules.length,
       advertisedToolCount: tools.length,
     };
   }
@@ -398,6 +511,19 @@ export class ChatService {
     return (words || 'New chat').slice(0, 80);
   }
 
+  private async requireActiveDestination(organizationId: string, destinationId: string) {
+    const destination = await this.sapDestinationsService.findOneOrThrow(
+      organizationId,
+      destinationId,
+    );
+    if (!destination.isActive) {
+      throw new UnprocessableEntityException(
+        `Destination "${destination.name}" is inactive. Choose another SAP source, or reactivate it under SAP Destinations.`,
+      );
+    }
+    return destination;
+  }
+
   private async getThreadOrThrow(
     threadId: string,
     userId: string,
@@ -433,6 +559,113 @@ export class ChatService {
       description: `${fm.description} (SAP function module: ${fm.fmName})`,
       parameters: { type: 'object', properties, required },
     };
+  }
+
+  private async executeCapToolCall(
+    destination: SapDestination,
+    call: LlmToolCall,
+  ): Promise<{ invocation: ChatToolInvocation; content: string }> {
+    const started = Date.now();
+    const parsed = this.capCallArguments(call.arguments ?? {});
+
+    if (call.name !== CAP_EXECUTE_TOOL_NAME) {
+      const message = `Unknown tool "${call.name}". Use ${CAP_EXECUTE_TOOL_NAME} to call a SAP function module.`;
+      return {
+        invocation: {
+          toolName: call.name,
+          fmName: parsed.fmName || '—',
+          arguments: call.arguments,
+          success: false,
+          statusCode: null,
+          durationMs: Date.now() - started,
+          message,
+        },
+        content: message,
+      };
+    }
+
+    if (!parsed.fmName) {
+      const message = 'A SAP function module name is required.';
+      return {
+        invocation: {
+          toolName: call.name,
+          fmName: '—',
+          arguments: call.arguments,
+          success: false,
+          statusCode: null,
+          durationMs: Date.now() - started,
+          message,
+        },
+        content: message,
+      };
+    }
+
+    try {
+      const response = await this.fmInvokerService.invokeNamed(
+        destination,
+        parsed.fmName,
+        parsed.parameters,
+      );
+      return {
+        invocation: {
+          toolName: call.name,
+          fmName: parsed.fmName,
+          arguments: parsed.parameters,
+          success: true,
+          statusCode: response.status,
+          durationMs: Date.now() - started,
+          message: 'OK',
+        },
+        content: this.stringifyBody(response.data),
+      };
+    } catch (err) {
+      const status = err instanceof FmInvocationError ? err.status : null;
+      const message =
+        err instanceof Error ? err.message : 'The function module call failed for an unknown reason';
+      this.logger.warn(
+        `CAP tool "${call.name}" (${parsed.fmName}) failed for destination ${destination.id}: ${message}`,
+      );
+      return {
+        invocation: {
+          toolName: call.name,
+          fmName: parsed.fmName,
+          arguments: parsed.parameters,
+          success: false,
+          statusCode: status,
+          durationMs: Date.now() - started,
+          message,
+        },
+        content: message,
+      };
+    }
+  }
+
+  // Accepts the nested { functionModule, parameters } shape, a JSON string for
+  // parameters (Gemini often stringifies objects), or leftover top-level keys.
+  private capCallArguments(args: Record<string, unknown>): {
+    fmName: string;
+    parameters: Record<string, unknown>;
+  } {
+    const fmName = String(args.functionModule ?? args.function_module ?? '').trim();
+    let raw = args.parameters ?? args.parametersJson;
+    if (typeof raw === 'string') {
+      try {
+        raw = JSON.parse(raw) as unknown;
+      } catch {
+        raw = undefined;
+      }
+    }
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      const {
+        functionModule: _fm,
+        function_module: _fm2,
+        parameters: _p,
+        parametersJson: _pj,
+        ...rest
+      } = args;
+      raw = rest;
+    }
+    return { fmName, parameters: raw as Record<string, unknown> };
   }
 
   private async executeToolCall(

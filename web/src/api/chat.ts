@@ -1,12 +1,23 @@
 import { apiClient } from './client';
-import type { ChatThreadDetail, ChatThreadSummary, ChatTurnResult, LlmProviderInfo } from '../types';
+import type {
+  ChatDestination,
+  ChatThreadDetail,
+  ChatThreadSummary,
+  ChatTurnResult,
+  LlmProviderInfo,
+} from '../types';
 
 export const listLlmProviders = () =>
   apiClient.get<LlmProviderInfo[]>('/chat/providers').then((r) => r.data);
 
-export const listChatTools = () =>
+export const listChatDestinations = () =>
+  apiClient.get<ChatDestination[]>('/chat/destinations').then((r) => r.data);
+
+export const listChatTools = (sapDestinationId: string) =>
   apiClient
-    .get<{ name: string; description: string; fmName: string }[]>('/chat/tools')
+    .get<{ name: string; description: string; fmName: string }[]>('/chat/tools', {
+      params: { sapDestinationId },
+    })
     .then((r) => r.data);
 
 export const listChatThreads = () =>
@@ -21,7 +32,7 @@ export const createChatThread = () =>
 export const deleteChatThread = (threadId: string) =>
   apiClient.delete(`/chat/threads/${threadId}`);
 
-export const sendChatMessage = (
-  message: string,
-  threadId?: string,
-) => apiClient.post<ChatTurnResult>('/chat/message', { message, threadId }).then((r) => r.data);
+export const sendChatMessage = (message: string, sapDestinationId: string, threadId?: string) =>
+  apiClient
+    .post<ChatTurnResult>('/chat/message', { message, sapDestinationId, threadId })
+    .then((r) => r.data);

@@ -23,12 +23,55 @@ export class FmInvokerService {
     args: Record<string, unknown>,
   ): Promise<FmInvocationResponse> {
     const destination = await this.resolveDestination(organizationId, functionModule);
+    if (!destination.isActive) {
+      throw new FmInvocationError(
+        null,
+        `Destination "${destination.name}" is inactive, so this function module cannot be called.`,
+      );
+    }
     const parameters = this.declaredParametersOnly(functionModule, args);
 
     if (destination.transport === 'cap_facade') {
       return this.capFacadeService.execute(destination, functionModule.fmName, parameters);
     }
     return this.invokeDirect(destination, functionModule, parameters);
+  }
+
+  // XSUAA/CAP destinations have no FM whitelist: the model names the function
+  // module and its import parameters, and the CAP service is what accepts or
+  // rejects the call.
+  async invokeNamed(
+    destination: SapDestination,
+    fmName: string,
+    args: Record<string, unknown>,
+  ): Promise<FmInvocationResponse> {
+    if (destination.transport !== 'cap_facade') {
+      throw new FmInvocationError(
+        null,
+        `Destination "${destination.name}" calls SAP through Cloud Connector, so it can only run whitelisted function modules.`,
+      );
+    }
+    if (!destination.isActive) {
+      throw new FmInvocationError(
+        null,
+        `Destination "${destination.name}" is inactive, so this function module cannot be called.`,
+      );
+    }
+    const name = fmName.trim();
+    if (!name) {
+      throw new FmInvocationError(null, 'A SAP function module name is required.');
+    }
+    return this.capFacadeService.execute(destination, name, this.omitEmpty(args));
+  }
+
+  private omitEmpty(args: Record<string, unknown>): Record<string, unknown> {
+    const parameters: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(args ?? {})) {
+      if (value !== undefined && value !== null && value !== '') {
+        parameters[key] = value;
+      }
+    }
+    return parameters;
   }
 
   // Only parameters the admin declared are forwarded; anything the model invents is

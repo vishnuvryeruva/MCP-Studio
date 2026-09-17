@@ -16,4 +16,9 @@ export class ChatMessageDto {
   @IsOptional()
   @IsUUID('4')
   threadId?: string;
+
+  // Which SAP destination this turn should query. Required so a user with several
+  // connections cannot accidentally mix tools from two systems in one request.
+  @IsUUID('4')
+  sapDestinationId: string;
 }

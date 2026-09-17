@@ -10,6 +10,7 @@ import {
 import { Organization } from './organization.model';
 import { User } from './user.model';
 import { ChatMessage } from './chat-message.model';
+import { SapDestination } from './sap-destination.model';
 
 @Table({
   tableName: 'chat_threads',
@@ -40,6 +41,15 @@ export class ChatThread extends Model {
 
   @BelongsTo(() => User)
   declare user: User;
+
+  // Last SAP destination this chat queried. Nullable so older threads and a
+  // brand-new empty chat can exist before the user picks a source.
+  @ForeignKey(() => SapDestination)
+  @Column({ type: DataType.UUID, allowNull: true })
+  declare sapDestinationId: string | null;
+
+  @BelongsTo(() => SapDestination)
+  declare sapDestination: SapDestination | null;
 
   @Column({ type: DataType.STRING, allowNull: false, defaultValue: 'New chat' })
   declare title: string;

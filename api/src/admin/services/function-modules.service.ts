@@ -43,6 +43,7 @@ export class FunctionModulesService {
       organizationId,
       dto.sapDestinationId,
     );
+    this.assertWhitelistable(destination.transport);
     this.assertAddressable(destination.transport, dto.fmcallUrl);
     const created = await this.functionModuleModel.create({
       ...dto,
@@ -65,12 +66,21 @@ export class FunctionModulesService {
       dto.sapDestinationId ?? functionModule.sapDestinationId,
     );
     const fmcallUrl = dto.fmcallUrl ?? functionModule.fmcallUrl ?? undefined;
+    this.assertWhitelistable(destination.transport);
     this.assertAddressable(destination.transport, fmcallUrl);
     const updated = await functionModule.update({
       ...dto,
       ...(destination.transport === 'cap_facade' ? { fmcallUrl: null } : {}),
     });
     return this.withOverlapWarnings(organizationId, updated);
+  }
+
+  private assertWhitelistable(transport: DestinationTransport): void {
+    if (transport === 'cap_facade') {
+      throw new BadRequestException(
+        'XSUAA application destinations do not use a function-module whitelist. Ask SAP can call any function module the CAP service allows.',
+      );
+    }
   }
 
   private assertAddressable(transport: DestinationTransport, fmcallUrl?: string): void {

@@ -115,6 +115,13 @@ export interface DiscoveryResult {
   message: string;
 }
 
+export interface ChatDestination {
+  id: string;
+  name: string;
+  description: string | null;
+  transport: DestinationTransport;
+}
+
 export interface ChatToolInvocation {
   toolName: string;
   fmName: string;
@@ -140,6 +147,7 @@ export interface ChatTurnResult {
 export interface ChatThreadSummary {
   id: string;
   title: string;
+  sapDestinationId: string | null;
   lastMessageAt: string;
   createdAt: string;
 }

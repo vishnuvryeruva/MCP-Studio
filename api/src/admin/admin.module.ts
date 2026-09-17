@@ -40,8 +40,8 @@ import { FmInvokerService } from './services/fm-invoker.service';
     CapFacadeService,
     FmInvokerService,
   ],
-  // Chat runs function modules through the invoker so both transports share the
+  // Chat reuses destination lookup and the invoker so both transports share the
   // same routing, credential decryption, and failure wording as the admin screens.
-  exports: [FmInvokerService],
+  exports: [SapDestinationsService, FmInvokerService],
 })
 export class AdminModule {}

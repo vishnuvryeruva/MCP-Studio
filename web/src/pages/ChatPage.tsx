@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import * as chatApi from '../api/chat';
-import type { ChatThreadSummary, ChatToolInvocation, LlmProviderInfo } from '../types';
+import type {
+  ChatDestination,
+  ChatThreadSummary,
+  ChatToolInvocation,
+  DestinationTransport,
+  LlmProviderInfo,
+} from '../types';
 
 interface ChatEntry {
   id: string;
@@ -26,6 +32,13 @@ const PROVIDER_LABELS: Record<'anthropic' | 'openai' | 'gemini', string> = {
   gemini: 'Gemini',
 };
 
+const TRANSPORT_LABELS: Record<DestinationTransport, string> = {
+  direct_fmcall: 'Direct fmcall',
+  cap_facade: 'XSUAA application',
+};
+
+const DESTINATION_STORAGE_KEY = 'chatSapDestinationId';
+
 export default function ChatPage() {
   const [threads, setThreads] = useState<ChatThreadSummary[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -36,6 +49,8 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [providers, setProviders] = useState<LlmProviderInfo[]>([]);
+  const [destinations, setDestinations] = useState<ChatDestination[] | null>(null);
+  const [destinationId, setDestinationId] = useState('');
   const [tools, setTools] = useState<AvailableTool[] | null>(null);
   const [toolCount, setToolCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -46,45 +61,72 @@ export default function ChatPage() {
       .listLlmProviders()
       .then(setProviders)
       .catch(() => setProviders([]));
-    // The empty state lists this organization's real whitelisted function modules
-    // rather than invented example prompts.
+
+    void loadDestinationsAndThreads();
+  }, []);
+
+  useEffect(() => {
+    if (!destinationId) {
+      setTools([]);
+      setToolCount(0);
+      return;
+    }
+    localStorage.setItem(DESTINATION_STORAGE_KEY, destinationId);
     chatApi
-      .listChatTools()
+      .listChatTools(destinationId)
       .then((t) => {
         setTools(t);
         setToolCount(t.length);
       })
-      .catch(() => setTools([]));
-
-    void loadThreads();
-  }, []);
+      .catch(() => {
+        setTools([]);
+        setToolCount(0);
+      });
+  }, [destinationId]);
 
   // Keep the newest message in view as the conversation grows.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [entries, sending]);
 
-  async function loadThreads() {
+  function pickDestinationId(list: ChatDestination[], preferred?: string | null): string {
+    if (preferred && list.some((destination) => destination.id === preferred)) {
+      return preferred;
+    }
+    const stored = localStorage.getItem(DESTINATION_STORAGE_KEY);
+    if (stored && list.some((destination) => destination.id === stored)) {
+      return stored;
+    }
+    return list[0]?.id ?? '';
+  }
+
+  async function loadDestinationsAndThreads() {
     try {
       setThreadsLoading(true);
       setThreadsError(null);
-      const result = await chatApi.listChatThreads();
-      setThreads(result);
-      const firstThreadId = result[0]?.id ?? null;
+      const [destinationList, threadList] = await Promise.all([
+        chatApi.listChatDestinations(),
+        chatApi.listChatThreads(),
+      ]);
+      setDestinations(destinationList);
+      setThreads(threadList);
+      const firstThreadId = threadList[0]?.id ?? null;
+      setDestinationId(pickDestinationId(destinationList, threadList[0]?.sapDestinationId));
       setActiveThreadId(firstThreadId);
       if (firstThreadId) {
-        await loadThread(firstThreadId);
+        await loadThread(firstThreadId, destinationList);
       } else {
         setEntries([]);
       }
     } catch {
+      setDestinations([]);
       setThreadsError('Could not load saved chats.');
     } finally {
       setThreadsLoading(false);
     }
   }
 
-  async function loadThread(threadId: string) {
+  async function loadThread(threadId: string, destinationList?: ChatDestination[]) {
     try {
       setLoadingThread(true);
       setError(null);
@@ -100,6 +142,10 @@ export default function ChatPage() {
         })),
       );
       setActiveThreadId(thread.id);
+      const knownDestinations = destinationList ?? destinations ?? [];
+      if (thread.sapDestinationId) {
+        setDestinationId(pickDestinationId(knownDestinations, thread.sapDestinationId));
+      }
     } catch {
       setError('Could not load that chat.');
     } finally {
@@ -142,7 +188,7 @@ export default function ChatPage() {
 
   async function send(text: string) {
     const question = text.trim();
-    if (!question || sending) return;
+    if (!question || sending || !destinationId) return;
 
     setError(null);
     setInput('');
@@ -153,13 +199,22 @@ export default function ChatPage() {
     setSending(true);
 
     try {
-      const result = await chatApi.sendChatMessage(question, activeThreadId ?? undefined);
+      const result = await chatApi.sendChatMessage(
+        question,
+        destinationId,
+        activeThreadId ?? undefined,
+      );
       setToolCount(result.availableToolCount);
       setThreads((prev) => {
         const existing = prev.find((t) => t.id === result.threadId);
         if (existing) {
           return [
-            { ...existing, title: result.threadTitle, lastMessageAt: new Date().toISOString() },
+            {
+              ...existing,
+              title: result.threadTitle,
+              sapDestinationId: destinationId,
+              lastMessageAt: new Date().toISOString(),
+            },
             ...prev.filter((t) => t.id !== result.threadId),
           ];
         }
@@ -167,6 +222,7 @@ export default function ChatPage() {
           {
             id: result.threadId,
             title: result.threadTitle,
+            sapDestinationId: destinationId,
             lastMessageAt: new Date().toISOString(),
             createdAt: new Date().toISOString(),
           },
@@ -203,6 +259,8 @@ export default function ChatPage() {
   }
 
   const activeProvider = providers.find((p) => p.active);
+  const selectedDestination = destinations?.find((destination) => destination.id === destinationId);
+  const canSend = Boolean(destinationId) && !sending && Boolean(input.trim());
 
   return (
     <>
@@ -210,8 +268,11 @@ export default function ChatPage() {
         <div>
           <h1>Ask SAP</h1>
           <p>
-            Ask in plain language — answers come from your whitelisted SAP function modules
-            {toolCount !== null && `, ${toolCount} available`}
+            {selectedDestination?.transport === 'cap_facade'
+              ? `Ask in plain language — SAP is queried through ${selectedDestination.name} (XSUAA application). No function-module whitelist is needed.`
+              : `Ask in plain language — answers come from your whitelisted SAP function modules${
+                  toolCount !== null ? `, ${toolCount} available` : ''
+                }${selectedDestination ? ` on ${selectedDestination.name}` : ''}`}
           </p>
         </div>
         {activeProvider && (
@@ -262,16 +323,50 @@ export default function ChatPage() {
         </div>
 
         <div className="card chat-card">
+          <div className="chat-toolbar">
+            <label htmlFor="chat-destination">SAP destination</label>
+            <select
+              id="chat-destination"
+              value={destinationId}
+              onChange={(e) => setDestinationId(e.target.value)}
+              disabled={sending || destinations === null || destinations.length === 0}
+              aria-label="SAP destination"
+            >
+              {destinations === null ? (
+                <option value="">Loading destinations…</option>
+              ) : destinations.length === 0 ? (
+                <option value="">No SAP destinations configured</option>
+              ) : (
+                destinations.map((destination) => (
+                  <option key={destination.id} value={destination.id}>
+                    {destination.name} · {TRANSPORT_LABELS[destination.transport]}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+
           <div className="chat-scroll" ref={scrollRef}>
             {loadingThread && <p className="text-muted">Loading chat…</p>}
           {entries.length === 0 && !sending && (
             <div className="chat-empty">
-              {tools === null ? (
+              {destinations === null || tools === null ? (
                 <p className="text-muted">Loading available function modules…</p>
+              ) : destinations.length === 0 ? (
+                <p className="text-muted">
+                  No SAP destinations are configured yet, so there is nothing to query.
+                  Add one under <strong>SAP Destinations</strong> first.
+                </p>
+              ) : selectedDestination?.transport === 'cap_facade' ? (
+                <p className="text-muted">
+                  This XSUAA application can call SAP function modules by name. No whitelist is
+                  needed — ask in plain language and the CAP service will run the matching
+                  function module.
+                </p>
               ) : tools.length === 0 ? (
                 <p className="text-muted">
-                  No function modules are whitelisted yet, so there is nothing to query.
-                  Add one under <strong>Function Modules</strong> first.
+                  No function modules are whitelisted on this destination yet, so there is
+                  nothing to query. Add one under <strong>Function Modules</strong> first.
                 </p>
               ) : (
                 <>
@@ -341,11 +436,15 @@ export default function ChatPage() {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about your SAP data…"
-              disabled={sending}
+              placeholder={
+                destinationId
+                  ? 'Ask about your SAP data…'
+                  : 'Select an SAP destination to start asking…'
+              }
+              disabled={sending || !destinationId}
               aria-label="Message"
             />
-            <button className="btn btn-primary chat-send" type="submit" disabled={sending || !input.trim()}>
+            <button className="btn btn-primary chat-send" type="submit" disabled={!canSend}>
               {sending ? 'Sending…' : 'Send'}
             </button>
           </form>

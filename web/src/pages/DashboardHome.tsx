@@ -14,9 +14,11 @@ export default function DashboardHome() {
       <div className="card">
         <h2>Getting started</h2>
         <p className="text-muted">
-          Connect your SAP system under <strong>SAP Destinations</strong>, then whitelist the
-          fmcall URLs you want exposed as tools under <strong>Function Modules</strong>. Use{' '}
-          <strong>Roles</strong> and <strong>Users</strong> to give teammates scoped access.
+          Connect your SAP system under <strong>SAP Destinations</strong>. For a Cloud
+          Connector destination, whitelist the fmcall URLs you want exposed as tools under{' '}
+          <strong>Function Modules</strong>. XSUAA application destinations skip that
+          whitelist — Ask SAP can call function modules by name. Use <strong>Roles</strong>{' '}
+          and <strong>Users</strong> to give teammates scoped access.
         </p>
       </div>
     </>

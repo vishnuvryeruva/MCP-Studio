@@ -8,6 +8,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -18,7 +19,7 @@ import { LlmService } from '../llm/llm.service';
 import { ChatMessageDto } from './dto/chat-message.dto';
 
 // End-user surface: any authenticated account in the organization can chat.
-// Tools are scoped to that organization's enabled function modules.
+// Tools are scoped to the SAP destination the user selected for that turn.
 @Controller('chat')
 @UseGuards(JwtAuthGuard)
 export class ChatController {
@@ -32,9 +33,18 @@ export class ChatController {
     return this.llmService.listProviders(user.llmProvider);
   }
 
+  @Get('destinations')
+  listDestinations(@CurrentUser() user: AuthenticatedUser) {
+    return this.chatService.listDestinations(user.organizationId);
+  }
+
   @Get('tools')
-  listTools(@CurrentUser() user: AuthenticatedUser) {
-    return this.chatService.listAvailableTools(user.organizationId);
+  listTools(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('sapDestinationId', new ParseUUIDPipe({ version: '4', optional: true }))
+    sapDestinationId?: string,
+  ) {
+    return this.chatService.listAvailableTools(user.organizationId, sapDestinationId);
   }
 
   @Get('threads')
@@ -72,6 +82,7 @@ export class ChatController {
       userId: user.userId,
       organizationId: user.organizationId,
       threadId: dto.threadId,
+      sapDestinationId: dto.sapDestinationId,
       message: dto.message,
     });
   }

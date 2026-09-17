@@ -92,6 +92,15 @@ export class SapDestination extends Model {
   @Column({ type: DataType.TEXT, allowNull: true })
   declare encryptedCapClientSecret: string | null;
 
+  // Cached XSUAA access token for this destination, encrypted at rest. Reused until
+  // capAccessTokenExpiresAt is within the refresh window, then minted again from
+  // capTokenUrl. Null until the first successful client-credentials grant.
+  @Column({ type: DataType.TEXT, allowNull: true })
+  declare encryptedCapAccessToken: string | null;
+
+  @Column({ type: DataType.DATE, allowNull: true })
+  declare capAccessTokenExpiresAt: Date | null;
+
   @Column({ type: DataType.BOOLEAN, allowNull: false, defaultValue: true })
   declare isActive: boolean;
 

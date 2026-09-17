@@ -132,7 +132,7 @@ export class SapDestinationsService {
 
     await destination.update(patch);
     // The XSUAA client may have changed; a token minted for the old one must not be reused.
-    this.capFacadeService.invalidate(destination.id);
+    await this.capFacadeService.invalidate(destination.id);
     return this.toSafeResponse(destination);
   }
 
@@ -164,7 +164,7 @@ export class SapDestinationsService {
   async remove(organizationId: string, id: string) {
     const destination = await this.findOneOrThrow(organizationId, id);
     await destination.destroy();
-    this.capFacadeService.invalidate(id);
+    await this.capFacadeService.invalidate(id);
   }
 
   // Decrypted credentials should only ever be read by the internal fmcall invoker, never returned over the API.

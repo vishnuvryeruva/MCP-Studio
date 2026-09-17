@@ -48,8 +48,7 @@ export default function FunctionModulesPage() {
     [functionModules],
   );
 
-  const selectedDestinationIsCap =
-    destinations.find((d) => d.id === sapDestinationId)?.transport === 'cap_facade';
+  const directDestinations = destinations.filter((d) => d.transport === 'direct_fmcall');
 
   const visibleDiscovered = useMemo(() => {
     if (!discovered) return [];
@@ -72,7 +71,12 @@ export default function FunctionModulesPage() {
       ]);
       setFunctionModules(fmsRes);
       setDestinations(destRes);
-      if (destRes.length > 0) setSapDestinationId((prev) => prev || destRes[0].id);
+      const direct = destRes.filter((d) => d.transport === 'direct_fmcall');
+      if (direct.length > 0) {
+        setSapDestinationId((prev) =>
+          prev && direct.some((d) => d.id === prev) ? prev : direct[0].id,
+        );
+      }
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Failed to load function modules');
     } finally {
@@ -145,7 +149,7 @@ export default function FunctionModulesPage() {
         name,
         description,
         fmName,
-        ...(selectedDestinationIsCap ? {} : { fmcallUrl }),
+        fmcallUrl,
         parameters,
       });
       resetForm();
@@ -196,9 +200,9 @@ export default function FunctionModulesPage() {
       <div className="page-header">
         <div>
           <h1>Function Modules</h1>
-          <p>Whitelist fmcall URLs to expose them as tools to the chatbot</p>
+          <p>Whitelist fmcall URLs on Cloud Connector destinations to expose them as chat tools</p>
         </div>
-        {!showForm && destinations.length > 0 && (
+        {!showForm && directDestinations.length > 0 && (
           <button className="btn" onClick={() => setShowForm(true)}>
             New function module
           </button>
@@ -238,7 +242,7 @@ export default function FunctionModulesPage() {
         </div>
       )}
 
-      {destinations.length > 0 && (
+      {directDestinations.length > 0 && (
         <div className="card">
           <h2>
             Discover from SAP{' '}
@@ -262,17 +266,13 @@ export default function FunctionModulesPage() {
               onChange={(e) => setSapDestinationId(e.target.value)}
               aria-label="SAP destination to discover from"
             >
-              {destinations.map((d) => (
+              {directDestinations.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
                 </option>
               ))}
             </select>
-            <button
-              className="btn"
-              onClick={onDiscover}
-              disabled={discovering || selectedDestinationIsCap}
-            >
+            <button className="btn" onClick={onDiscover} disabled={discovering}>
               {discovering ? 'Discovering…' : 'Discover services'}
             </button>
             {discovered && discovered.length > 0 && (
@@ -284,13 +284,6 @@ export default function FunctionModulesPage() {
               />
             )}
           </div>
-
-          {selectedDestinationIsCap && (
-            <p className="text-muted">
-              Discovery reads the SAP Gateway catalog directly, which a CAP facade destination has
-              no route to. Add its function modules manually below.
-            </p>
-          )}
 
           {discoveryMessage && <p className="text-muted">{discoveryMessage}</p>}
 
@@ -345,6 +338,16 @@ export default function FunctionModulesPage() {
         </div>
       )}
 
+      {destinations.length > 0 && directDestinations.length === 0 && !loading && (
+        <div className="card">
+          <p className="empty-state">
+            Function-module whitelist is only used for Cloud Connector destinations. Your XSUAA
+            application destinations can already be queried from Ask SAP by function-module name —
+            nothing to whitelist here.
+          </p>
+        </div>
+      )}
+
       {destinations.length === 0 && !loading && (
         <div className="card">
           <p className="empty-state">Connect a SAP destination first before whitelisting an FM.</p>
@@ -361,7 +364,7 @@ export default function FunctionModulesPage() {
                 value={sapDestinationId}
                 onChange={(e) => setSapDestinationId(e.target.value)}
               >
-                {destinations.map((d) => (
+                {directDestinations.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name}
                   </option>
@@ -400,24 +403,17 @@ export default function FunctionModulesPage() {
                 required
               />
             </div>
-            {selectedDestinationIsCap ? (
-              <p className="text-muted">
-                This destination reaches SAP through its CAP facade, which looks the function module
-                up by name — no fmcall URL is needed.
-              </p>
-            ) : (
-              <div className="field">
-                <label htmlFor="fmcallUrl">fmcall URL / path</label>
-                <input
-                  id="fmcallUrl"
-                  className="mono"
-                  value={fmcallUrl}
-                  onChange={(e) => setFmcallUrl(e.target.value)}
-                  placeholder="/sap/bc/fmcall/BAPI_SALESORDER_GETLIST"
-                  required
-                />
-              </div>
-            )}
+            <div className="field">
+              <label htmlFor="fmcallUrl">fmcall URL / path</label>
+              <input
+                id="fmcallUrl"
+                className="mono"
+                value={fmcallUrl}
+                onChange={(e) => setFmcallUrl(e.target.value)}
+                placeholder="/sap/bc/fmcall/BAPI_SALESORDER_GETLIST"
+                required
+              />
+            </div>
             <div className="field">
               <label>Parameters</label>
               {parameters.map((param, i) => (
